@@ -11,7 +11,7 @@ Functions:
 - compute_master: Compute angular power spectrum (Cls) from a pair of NaMaster fields.
 - ang2cl: Perform the entire process to estimate Cl from (RA, Dec) sets using NaMaster.
 - edges_binning: Define an ell binning for a given NSIDE, lmin, and bin width.
-- compute_fsky: Compute the fraction of sky covered by a given mask.
+- create_redshift_bins: Create redshift bins and corresponding galaxy catalogs from a FITS file for a specified set of bins.
 
 Dependencies:
 - numpy
@@ -20,425 +20,15 @@ Dependencies:
 - astropy
 - time
 
-Make sure to install the required libraries before using these functions.
 """
 
 import numpy as np
 import healpy as hp
 import pymaster as nmt
 from astropy.io import fits
+
 import time
-
-def shear_map(ra, dec, g1, g2, ns, mask): 
-    """
-    Map shear values to Healpix maps based on galaxy positions and observed ellipticities.
-
-    Parameters
-    ----------
-    ra : array-like
-        Array containing right ascension angles in degrees.
-    dec : array-like
-        Array containing declination angles in degrees.
-    g1 : array-like
-        Array containing the first component of shear values.
-    g2 : array-like
-        Array containing the second component of shear values.
-    ns : int
-        NSIDE parameter for the Healpix map.
-    mask : array-like
-        Mask defining the footprint.
-
-    Returns
-    -------
-    hpmapg1 : array-like
-        Healpix map of the first component of shear values.
-    hpmapg2 : array-like
-        Healpix map of the second component of shear values.
-
-    Examples
-    --------
-    >>> ra = np.array([10, 20, 30])
-    >>> dec = np.array([45, 55, 65])
-    >>> g1 = np.array([0.1, 0.2, 0.3])
-    >>> g2 = np.array([0.2, 0.3, 0.4])
-    >>> ns = 64
-    >>> mask = np.ones(hp.nside2npix(ns))
-    >>> shear_map(ra, dec, g1, g2, ns, mask)
-    (array([...]), array([...]))
-    """
-    #- convert from deg to sr
-    ra_rad = ra * (np.pi / 180)
-    dec_rad = dec * (np.pi / 180)
-    
-    #- get the number of pixels for nside
-    npix = hp.nside2npix(ns)
-    
-    #- get the pixel number for the given angles (need to change dec to theta pi/2.-dec)
-    pix = hp.pixelfunc.ang2pix(ns, np.pi / 2. - dec_rad, ra_rad)
-
-    #- map the shear values
-    hpmapg1 = np.bincount(pix, minlength=npix, weights=g1)
-    hpmapg2 = np.bincount(pix, minlength=npix, weights=g2)
-    
-    #- get the total number of galaxies
-    ngal = dec_rad.size
-
-    #- compute mean weight per visible pixel
-    wbar = ngal / npix / np.mean(mask)
-
-    #- normalize the shear values
-    hpmapg1 /= wbar
-    hpmapg2 /= wbar
-    
-    return hpmapg1, hpmapg2
-
-def density_map(ra, dec, ns, mask):
-    """
-    Map galaxy number density to Healpix maps based on galaxy positions.
-
-    Parameters
-    ----------
-    ra : array-like
-        Array containing right ascension angles in degrees.
-    dec : array-like
-        Array containing declination angles in degrees.
-    ns : int
-        NSIDE parameter for the Healpix map.
-    mask : array-like
-        Mask defining the footprint.
-
-    Returns
-    -------
-    hpmap : array-like
-        Healpix map of galaxy number density.
-
-    Examples
-    --------
-    >>> ra = np.array([10, 20, 30])
-    >>> dec = np.array([45, 55, 65])
-    >>> ns = 64
-    >>> mask = np.ones(hp.nside2npix(ns))
-    >>> density_map(ra, dec, ns, mask)
-    array([...])
-    """
-    
-    #- convert from deg to sr
-    ra_rad = ra * (np.pi / 180)
-    dec_rad = dec * (np.pi / 180)
-    
-    #- get the number of pixels for nside
-    npix = hp.nside2npix(ns)
-    
-    #- get the pixel number for the given angles (need to change dec to theta pi/2.-dec)
-    pix = hp.pixelfunc.ang2pix(ns, np.pi / 2. - dec_rad, ra_rad)
-    
-    #- get the hpmap (i.e. the number of particles per pixels) 
-    hpmap = np.bincount(pix, weights=np.ones(dec.size), minlength=npix)
-    
-    #- get the total number of galaxies
-    ngal = dec_rad.size
-    
-    #- Compute shotnoise
-    sn = (4 * np.pi * compute_fsky(mask) ** 2) / ngal
-    
-    #- Compute nbar from all the pixels inside the mask and compute delta
-    nbar = ngal / npix / np.mean(mask)
-    hpmap = hpmap / nbar - mask
-    
-    return hpmap
-
-def ang2map_radec(nns, ra, dec):
-    """
-    Convert a set of right ascension (RA) and declination (Dec) angles to a Healpix map.
-
-    Parameters
-    ----------
-    nns : int
-        NSIDE parameter for the Healpix map.
-    ra : array-like
-        Array containing right ascension angles in degrees.
-    dec : array-like
-        Array containing declination angles in degrees.
-
-    Returns
-    -------
-    hpmap : array-like
-        Healpix map of galaxy number counts.
-
-    Examples
-    --------
-    >>> nns = 64
-    >>> ra = np.array([10, 20, 30])
-    >>> dec = np.array([45, 55, 65])
-    >>> ang2map_radec(nns, ra, dec)
-    array([...])
-    """
-    
-    #- convert from deg to sr
-    start = time.time()
-    ra_rad = ra*(np.pi/180)
-    dec_rad = dec*(np.pi/180)
-    print(time.time()-start,'s for conversion')
-    
-    #- get the number of pixels for nside
-    npix = hp.nside2npix(nns)
-    
-    #- get the pixel number for the given angles (need to change dec to theta pi/2.-dec)
-    start = time.time()
-    pix = hp.pixelfunc.ang2pix(nns, np.pi/2.-dec_rad, ra_rad)
-    print(time.time()-start,'s for ang2pix')
-    
-    #- get the hpmap (i.e. the number of particles per pixels) 
-    start = time.time()
-    hpmap = np.bincount(pix, weights=np.ones(dec.size), minlength=npix)
-    #hpmap, bin_center = np.histogram(pix, np.arange(npix+1))
-    print(time.time()-start,'s to create the hpmap')
-    
-    return hpmap
-
-def map2fld(hpmap1, hpmap2, mask):
-    """
-    Create NaMaster fields from Healpix maps.
-    1) Get the edges of the mask
-    2) Put to zero every pixel of the hp maps outside the mask
-    3) Compute nbar from all the pixels inside the mask and Compute delta = n/nbar - 1
-    4) Create a field from this map
-
-    Parameters
-    ----------
-    hpmap1 : array-like
-        First Healpix map.
-    hpmap2 : array-like
-        Second Healpix map.
-    mask : array-like
-        Mask defining the region of interest.
-
-    Returns
-    -------
-    fld1 : NaMaster field
-        NaMaster field corresponding to hpmap1.
-    fld2 : NaMaster field
-        NaMaster field corresponding to hpmap2.
-    sn : float
-        Shot noise computed based on the provided mask.
-
-    Examples
-    --------
-    >>> hpmap1 = np.array([...])
-    >>> hpmap2 = np.array([...])
-    >>> mask = np.array([...])
-    >>> map2fld(hpmap1, hpmap2, mask)
-    (..., ..., ...)
-    """
-    
-    #- Get the nside from npix (which is the size of the map)
-    nns = hp.npix2nside(hpmap1.size)
-        
-    start = time.time()
-    #- Get coordinates of all pixels
-    thetapix, phipix = hp.pix2ang(nns, np.arange(hpmap1.size))
-    print(time.time()-start,'s for pix2ang')
-
-    #- Get max and min theta and phi of the mask
-    start = time.time()
-    tmi = thetapix[mask == 1 ].min()
-    tma = thetapix[mask == 1 ].max()
-    pmi = phipix[mask == 1 ].min()
-    pma = phipix[mask == 1 ].max()
-    print(time.time()-start,'s for min and max mask')
-    
-    #- Define conditions in and out of the mask
-    start = time.time()    
-    cond_out_mask = (thetapix<tmi) | (thetapix>tma) | (phipix<pmi) | (phipix>pma)
-    cond_in_mask = (thetapix>=tmi) & (thetapix<=tma) & (phipix>=pmi) & (phipix<=pma)
-    print(time.time()-start,'s to define selection')   
-    
-    #- Cut the input HP map to the mask
-    start = time.time()
-    hpmap1[cond_out_mask] = 0.
-    hpmap2[cond_out_mask] = 0.
-    print(time.time()-start,'s for cut')
-    
-    #- Compute shotnoise
-    sn = (4*np.pi*compute_fsky(mask)**2)/hpmap1.sum()
-    
-    #- Compute nbar from all the pixels inside the mask and compute delta
-    start = time.time()
-    nbar1 = np.mean(hpmap1[cond_in_mask])
-    nbar2 = np.mean(hpmap2[cond_in_mask])
-    hpmap1[cond_in_mask] = hpmap1[cond_in_mask]/nbar1 - 1
-    hpmap2[cond_in_mask] = hpmap2[cond_in_mask]/nbar2 - 1
-    print(time.time()-start,'s for nbar')
-
-    #- Create NaMaster field
-    start = time.time()
-    fld1 = nmt.NmtField(mask, [hpmap1])
-    fld2 = nmt.NmtField(mask, [hpmap2])
-    print('Mean density contrast : ', hpmap1[cond_in_mask].mean())
-    print(time.time()-start,'s for field')
-    
-    return fld1, fld2, sn
-
-def compute_master(f_a, f_b, wsp, nns):
-    """
-    Compute the angular power spectrum (Cls) from a pair of NaMaster fields.
-
-    Parameters
-    ----------
-    f_a : nmt.NmtField
-        NaMaster field for the first map.
-    f_b : nmt.NmtField
-        NaMaster field for the second map.
-    wsp : nmt.NmtWorkspace
-        NaMaster workspace containing pre-computed matrices.
-    nns : int
-        NSIDE parameter for the Healpix maps.
-
-    Returns
-    -------
-    cl_decoupled : array-like
-        Decoupled angular power spectrum.
-
-    Examples
-    --------
-    >>> import pymaster as nmt
-    >>> ns = 64
-    >>> f_a = nmt.NmtField(mask, [hpmap1])
-    >>> f_b = nmt.NmtField(mask, [hpmap2])
-    >>> wsp = nmt.NmtWorkspace()
-    >>> compute_master(f_a, f_b, wsp, ns)
-    array([...])
-    """
-    
-    cl_coupled = nmt.compute_coupled_cell(f_a, f_b)/hp.sphtfunc.pixwin(nns)**2
-    cl_decoupled = wsp.decouple_cell(cl_coupled)
-
-    return cl_decoupled
-
-def ang2cl(nns, ra1, dec1, ra2, dec2, mask, wsp, nell_per_bin=1):
-    """
-    Perform the entire process to estimate Cl from a pair of (RA, Dec) sets.
-    1) Project the tomographic bin of galaxy positions to a hp map. In other words, get the hpmap from (ra, dec)
-    2) Get the associated galaxy overdensity fields f_1 and f_2 in a NaMaster format
-    3) Estimate Cl of f_1 X f_2
-
-    Parameters
-    ----------
-    nns : int
-        NSIDE parameter for the Healpix maps.
-    ra1 : array-like
-        Right ascension angles for the first set.
-    dec1 : array-like
-        Declination angles for the first set.
-    ra2 : array-like
-        Right ascension angles for the second set.
-    dec2 : array-like
-        Declination angles for the second set.
-    mask : array-like
-        Mask defining the region of interest.
-    wsp : nmt.NmtWorkspace
-        NaMaster workspace containing pre-computed matrices.
-    nell_per_bin : int, optional
-        Number of ell values per bin (default is 1).
-
-    Returns
-    -------
-    cl : array-like
-        Estimated angular power spectrum.
-    snl : array-like
-        Decoupled shot noise power spectrum.
-
-    Examples
-    --------
-    >>> ns = 64
-    >>> ra1 = np.array([10, 20, 30])
-    >>> dec1 = np.array([45, 55, 65])
-    >>> ra2 = np.array([40, 50, 60])
-    >>> dec2 = np.array([75, 85, 95])
-    >>> mask = np.ones(hp.nside2npix(ns))
-    >>> wsp = nmt.NmtWorkspace()
-    >>> ang2cl(ns, ra1, dec1, ra2, dec2, mask, wsp)
-    (array([...]), array([...]))
-    """
-    
-    hpmap1 = ang2map_radec(nns, ra1, dec1)
-    hpmap2 = ang2map_radec(nns, ra2, dec2)
-    
-    f1, f2, sn = map2fld(hpmap1, hpmap2, mask)
-    
-    start = time.time()
-    cl = compute_master(f1, f2, wsp, nns)
-    print(time.time()-start,'s for Cl estimation')
-    
-    #- decouple the shotnoise
-    snl = np.array([ np.full(3 * nns, sn) ])/hp.sphtfunc.pixwin(nns)**2
-    snl = wsp.decouple_cell(snl)
-    
-    return cl, snl
-
-def edges_binning(NSIDE, lmin, bw):
-    """
-    Define an ell binning for a given NSIDE, lmin, and bin width.
-
-    Parameters
-    ----------
-    NSIDE : int
-        NSIDE parameter for the Healpix maps.
-    lmin : int
-        Minimum ell value for the binning.
-    bw : int
-        Bin width for the ell values.
-
-    Returns
-    -------
-    b : nmt.NmtBin
-        NaMaster binning object.
-
-    Examples
-    --------
-    >>> nside = 64
-    >>> lmin = 10
-    >>> bw = 5
-    >>> edges_binning(nside, lmin, bw)
-    nmt.NmtBin object with 13 bins: [(10, 15), (15, 20), ..., (60, 65)]
-    """
-
-    lmax = 2*NSIDE
-    nbl = (lmax-lmin)//bw + 1
-    elli = np.zeros(nbl, int)
-    elle = np.zeros(nbl, int)
-
-    for i in range(nbl):
-        elli[i] = lmin + i*bw
-        elle[i] = lmin + (i+1)*bw
-
-    b = nmt.NmtBin.from_edges(elli, elle)
-    return b
-
-def compute_fsky(mask):
-    """
-    Compute the fraction of sky covered by a given mask.
-
-    Parameters
-    ----------
-    mask : array-like
-        Mask defining the region of interest.
-
-    Returns
-    -------
-    fsky : float
-        Fraction of the sky covered by the mask.
-
-    Examples
-    --------
-    >>> mask = np.ones(12)
-    >>> compute_fsky(mask)
-    1.0
-    """
-    
-    i_zeros = np.where(mask != 0)
-    print('fsky=',float(i_zeros[0].size)/float(mask.size))
-    return float(i_zeros[0].size)/float(mask.size)
+import itertools as it
 
 def create_redshift_bins(file_path, selected_bins, zmin=0.2, zmax=2.54, nbins=13):
     """
@@ -489,17 +79,15 @@ def create_redshift_bins(file_path, selected_bins, zmin=0.2, zmax=2.54, nbins=13
     hdul = fits.open(file_path)
     
     z_edges = np.linspace(zmin, zmax, nbins + 1)
-    print("z_edges: ", z_edges)
 
     tomo_bins = []
     ngal_bin = []
-
+    print('Dividing the sample in equi-distant tomographic bins')
     for i in selected_bins:
         if not (0 <= i < nbins):
             raise ValueError(f"Invalid bin index: {i}. It should be in the range [0, {nbins}).")
-
-        start = time.time()
-        selection = (hdul[1].data['zp'] >= z_edges[i]) & (hdul[1].data['zp'] <= z_edges[i + 1])
+        print('- bin {}/{}'.format(i, nbins))
+        selection = (hdul[1].data['zp'] >= z_edges[i]) & (hdul[1].data['zp'] <= z_edges[i+1])
         ngal_bin.append(hdul[1].data['observed_redshift_gal'][selection].size)
 
         tbin = {
@@ -514,3 +102,282 @@ def create_redshift_bins(file_path, selected_bins, zmin=0.2, zmax=2.54, nbins=13
     hdul.close()
     
     return tomo_bins, ngal_bin
+
+def shear_map(tbin, nside, mask): 
+    """
+    Map shear values to Healpix maps based on galaxy positions and observed ellipticities.
+
+    Parameters
+    ----------
+    ra : array-like
+        Array containing right ascension angles in degrees.
+    dec : array-like
+        Array containing declination angles in degrees.
+    g1 : array-like
+        Array containing the first component of shear values.
+    g2 : array-like
+        Array containing the second component of shear values.
+    ns : int
+        NSIDE parameter for the Healpix map.
+    mask : array-like
+        Mask defining the footprint.
+
+    Returns
+    -------
+    hpmapg1 : array-like
+        Healpix map of the first component of shear values.
+    hpmapg2 : array-like
+        Healpix map of the second component of shear values.
+
+    Examples
+    --------
+    >>> ra = np.array([10, 20, 30])
+    >>> dec = np.array([45, 55, 65])
+    >>> g1 = np.array([0.1, 0.2, 0.3])
+    >>> g2 = np.array([0.2, 0.3, 0.4])
+    >>> ns = 64
+    >>> mask = np.ones(hp.nside2npix(ns))
+    >>> shear_map(ra, dec, g1, g2, ns, mask)
+    [array([...]), array([...])]
+    """
+    #- convert from deg to sr
+    ra_rad = tbin['ra'] * (np.pi / 180)
+    dec_rad = tbin['dec'] * (np.pi / 180)
+    
+    #- get the number of pixels for nside
+    npix = hp.nside2npix(nside)
+    
+    #- get the pixel number for the given angles (need to change dec to theta pi/2.-dec)
+    pix = hp.pixelfunc.ang2pix(nside, np.pi / 2. - dec_rad, ra_rad)
+
+    #- map the shear values
+    hpmapg1 = np.bincount(pix, minlength=npix, weights=tbin['gamma1'])
+    hpmapg2 = np.bincount(pix, minlength=npix, weights=tbin['gamma2'])
+    
+    #- get the total number of galaxies
+    ngal = dec_rad.size
+
+    #- compute mean weight per visible pixel
+    fsky = np.mean(mask)
+    nbar = ngal / npix / fsky
+    
+    #- compute shape-noise
+    shapenoise = shape_noise(tbin, fsky)
+
+    #- normalize the shear values
+    hpmapg1 = hpmapg1/nbar
+    hpmapg2 = hpmapg2/nbar
+    
+    return [hpmapg1, hpmapg2], shapenoise
+
+def density_map(tbin, nside, mask):
+    """
+    Map galaxy number density to Healpix maps based on galaxy positions.
+
+    Parameters
+    ----------
+    ra : array-like
+        Array containing right ascension angles in degrees.
+    dec : array-like
+        Array containing declination angles in degrees.
+    ns : int
+        NSIDE parameter for the Healpix map.
+    mask : array-like
+        Mask defining the footprint.
+
+    Returns
+    -------
+    hpmap : array-like
+        Healpix map of galaxy number density.
+
+    Examples
+    --------
+    >>> ra = np.array([10, 20, 30])
+    >>> dec = np.array([45, 55, 65])
+    >>> ns = 64
+    >>> mask = np.ones(hp.nside2npix(ns))
+    >>> density_map(ra, dec, ns, mask)
+    array([...])
+    """
+    
+    #- convert from deg to sr
+    ra_rad = tbin['ra'] * (np.pi / 180)
+    dec_rad = tbin['dec'] * (np.pi / 180)
+    
+    #- get the number of pixels for nside
+    npix = hp.nside2npix(nside)
+    
+    #- get the pixel number for the given angles (need to change dec to theta pi/2.-dec)
+    pix = hp.pixelfunc.ang2pix(nside, np.pi / 2. - dec_rad, ra_rad)
+    
+    #- get the hpmap (i.e. the number of particles per pixels) 
+    hpmap = np.bincount(pix, weights=np.ones(dec_rad.size), minlength=npix)
+    
+    #- get the total number of galaxies
+    ngal = dec_rad.size
+    
+    #- get sky fraction
+    fsky = np.mean(mask)
+    
+    #- compute shot-noise
+    shotnoise = shot_noise(tbin, fsky)
+    
+    #- compute nbar from all the pixels inside the mask and compute delta
+    nbar = ngal / npix / fsky
+    hpmap = hpmap / nbar - mask
+    
+    return [hpmap], shotnoise
+
+def shape_noise(tbin, fsky):
+    ngal = tbin['gamma1'].size
+    var = ((tbin['gamma1']**2 + tbin['gamma2']**2)).sum()/ngal 
+    return var * ( 2*np.pi * fsky**2) / ngal
+
+def shot_noise(tbin, fsky):
+    ngal = tbin['dec'].size
+    return (4*np.pi * fsky**2) / ngal
+
+def get_map_for_probes(probes):
+    """
+    Get the required functions to compute maps based on the selected probes.
+
+    Parameters
+    ----------
+    probes : list
+        List of probes to consider. Possible values: 'GC' (galaxy clustering),
+        'WL' (weak lensing), 'GGL' (galaxy-galaxy lensing).
+
+    Returns
+    -------
+    maps : list
+        List of function computing the maps based on the selected probes.
+
+    Examples
+    --------
+    >>> probes = ['GC', 'WL']
+    >>> get_map_for_probes(probes)
+    [density_map, shear_map]
+
+    """
+    maps = []
+    keys  = []
+
+    if 'GC' in probes or 'GGL' in probes:
+        gc_map = density_map
+        maps.append(gc_map)
+        keys.append('D')
+
+    if 'WL' in probes or 'GGL' in probes:
+        wl_map = shear_map
+        maps.append(wl_map)
+        keys.append('G')
+
+    return maps, keys
+
+def get_iter(probe, cross, zbins):
+    
+    keymap = {'GC'  :  ['D{}'.format(i) for i in zbins],
+              'WL'  :  ['G{}'.format(i) for i in zbins],
+              'GGL' :  []}
+    
+    cross_selec = {True  : it.combinations_with_replacement(keymap[probe], 2),
+                   False : zip(keymap[probe], keymap[probe])} 
+
+    iter_probe = {'GC'  : cross_selec['GC' in cross],
+                  'WL'  : cross_selec['WL' in cross],
+                  'GGL' : it.product(keymap['GC'], keymap['WL'])}
+    
+    return iter_probe[probe]
+
+def map2fld(hpmap, mask):
+    if len(hpmap) == 2:
+        fld = nmt.NmtField(mask, [-hpmap[0], hpmap[1]])
+    else:
+        fld = nmt.NmtField(mask, [hpmap[0]])
+        
+    return fld
+
+def pixwin(nside, depixelate):
+    pix_dic = {True  : hp.sphtfunc.pixwin(nside)**2,
+               False : 1}
+    return pix_dic[depixelate]
+
+def compute_master(f_a, f_b, wsp, nside, depixelate):
+    """
+    Compute the angular power spectrum (Cls) from a pair of NaMaster fields.
+
+    Parameters
+    ----------
+    f_a : nmt.NmtField
+        NaMaster field for the first map.
+    f_b : nmt.NmtField
+        NaMaster field for the second map.
+    wsp : nmt.NmtWorkspace
+        NaMaster workspace containing pre-computed matrices.
+    nside : int
+        NSIDE parameter for the Healpix maps.
+
+    Returns
+    -------
+    cl_decoupled : array-like
+        Decoupled angular power spectrum.
+
+    Examples
+    --------
+    >>> import pymaster as nmt
+    >>> ns = 64
+    >>> f_a = nmt.NmtField(mask, [hpmap1])
+    >>> f_b = nmt.NmtField(mask, [hpmap2])
+    >>> wsp = nmt.NmtWorkspace()
+    >>> compute_master(f_a, f_b, wsp, ns)
+    array([...])
+    """
+    
+    cl_coupled = nmt.compute_coupled_cell(f_a, f_b)/pixwin(nside, depixelate)
+    cl_decoupled = wsp.decouple_cell([cl_coupled[0]])
+
+    return cl_decoupled[0]
+
+def decouple_noise(noise, wsp, nside, depixelate):
+    snl = np.array([ np.full(3 * nside, noise) ])/pixwin(nside, depixelate)
+    return wsp.decouple_cell(snl)[0]
+
+def edges_binning(NSIDE, lmin, bw):
+    """
+    Define an ell binning for a given NSIDE, lmin, and bin width.
+
+    Parameters
+    ----------
+    NSIDE : int
+        NSIDE parameter for the Healpix maps.
+    lmin : int
+        Minimum ell value for the binning.
+    bw : int
+        Bin width for the ell values.
+
+    Returns
+    -------
+    b : nmt.NmtBin
+        NaMaster binning object.
+
+    Examples
+    --------
+    >>> nside = 64
+    >>> lmin = 10
+    >>> bw = 5
+    >>> edges_binning(nside, lmin, bw)
+    nmt.NmtBin object with 13 bins: [(10, 15), (15, 20), ..., (60, 65)]
+    """
+
+    lmax = 2*NSIDE
+    nbl = (lmax-lmin)//bw + 1
+    elli = np.zeros(nbl, int)
+    elle = np.zeros(nbl, int)
+
+    for i in range(nbl):
+        elli[i] = lmin + i*bw
+        elle[i] = lmin + (i+1)*bw
+
+    b = nmt.NmtBin.from_edges(elli, elle)
+    return b
+
