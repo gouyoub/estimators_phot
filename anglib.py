@@ -30,6 +30,9 @@ from astropy.io import fits
 import time
 import itertools as it
 
+
+#---- Redshift binning ----#
+
 def create_redshift_bins(file_path, selected_bins, zmin=0.2, zmax=2.54, nbins=13):
     """
     Create redshift bins and corresponding galaxy catalogs from a FITS file for a specified set of bins.
@@ -75,9 +78,9 @@ def create_redshift_bins(file_path, selected_bins, zmin=0.2, zmax=2.54, nbins=13
        'dec': array([...]),
        'z': array([...])}], [100, 150, 200])
     """
-    
+
     hdul = fits.open(file_path)
-    
+
     z_edges = np.linspace(zmin, zmax, nbins + 1)
 
     tomo_bins = []
@@ -100,10 +103,12 @@ def create_redshift_bins(file_path, selected_bins, zmin=0.2, zmax=2.54, nbins=13
         tomo_bins.append(tbin)
 
     hdul.close()
-    
+
     return tomo_bins, ngal_bin
 
-def shear_map(tbin, nside, mask): 
+#---- Maps ----#
+
+def shear_map(tbin, nside, mask):
     """
     Map shear values to Healpix maps based on galaxy positions and observed ellipticities.
 
@@ -143,31 +148,31 @@ def shear_map(tbin, nside, mask):
     #- convert from deg to sr
     ra_rad = tbin['ra'] * (np.pi / 180)
     dec_rad = tbin['dec'] * (np.pi / 180)
-    
+
     #- get the number of pixels for nside
     npix = hp.nside2npix(nside)
-    
+
     #- get the pixel number for the given angles (need to change dec to theta pi/2.-dec)
     pix = hp.pixelfunc.ang2pix(nside, np.pi / 2. - dec_rad, ra_rad)
 
     #- map the shear values
     hpmapg1 = np.bincount(pix, minlength=npix, weights=tbin['gamma1'])
     hpmapg2 = np.bincount(pix, minlength=npix, weights=tbin['gamma2'])
-    
+
     #- get the total number of galaxies
     ngal = dec_rad.size
 
     #- compute mean weight per visible pixel
     fsky = np.mean(mask)
     nbar = ngal / npix / fsky
-    
+
     #- compute shape-noise
     shapenoise = shape_noise(tbin, fsky)
 
     #- normalize the shear values
     hpmapg1 = hpmapg1/nbar
     hpmapg2 = hpmapg2/nbar
-    
+
     return [hpmapg1, hpmapg2], shapenoise
 
 def density_map(tbin, nside, mask):
@@ -199,43 +204,73 @@ def density_map(tbin, nside, mask):
     >>> density_map(ra, dec, ns, mask)
     array([...])
     """
-    
+
     #- convert from deg to sr
     ra_rad = tbin['ra'] * (np.pi / 180)
     dec_rad = tbin['dec'] * (np.pi / 180)
-    
+
     #- get the number of pixels for nside
     npix = hp.nside2npix(nside)
-    
+
     #- get the pixel number for the given angles (need to change dec to theta pi/2.-dec)
     pix = hp.pixelfunc.ang2pix(nside, np.pi / 2. - dec_rad, ra_rad)
-    
-    #- get the hpmap (i.e. the number of particles per pixels) 
+
+    #- get the hpmap (i.e. the number of particles per pixels)
     hpmap = np.bincount(pix, weights=np.ones(dec_rad.size), minlength=npix)
-    
+
     #- get the total number of galaxies
     ngal = dec_rad.size
-    
+
     #- get sky fraction
     fsky = np.mean(mask)
-    
+
     #- compute shot-noise
     shotnoise = shot_noise(tbin, fsky)
-    
+
     #- compute nbar from all the pixels inside the mask and compute delta
     nbar = ngal / npix / fsky
     hpmap = hpmap / nbar - mask
-    
+
     return [hpmap], shotnoise
 
-def shape_noise(tbin, fsky):
-    ngal = tbin['gamma1'].size
-    var = ((tbin['gamma1']**2 + tbin['gamma2']**2)).sum()/ngal 
-    return var * ( 2*np.pi * fsky**2) / ngal
+def map2fld(hpmap, mask):
+    """
+    Convert Healpix maps to NaMaster fields.
 
-def shot_noise(tbin, fsky):
-    ngal = tbin['dec'].size
-    return (4*np.pi * fsky**2) / ngal
+    Parameters
+    ----------
+    hpmap : list or array-like
+        List or array containing the Healpix maps. If len(hpmap) is 2, the first map
+        is treated as the negative component and the second as the positive component
+        of the field. If len(hpmap) is 1, it's treated as a single map.
+    mask : array-like
+        Mask defining the footprint.
+
+    Returns
+    -------
+    fld : NmtField
+        NaMaster field object representing the input Healpix maps.
+
+    Notes
+    -----
+    NaMaster (NmtField) handles fields for spherical harmonic analysis.
+    This function prepares the fields by associating them with the provided mask.
+    For len(hpmap) == 2, the negative and positive components are assigned accordingly.
+
+    Examples
+    --------
+    >>> import numpy as np
+    >>> import pymaster as nmt
+    >>> mask = np.ones(12)  # Example mask
+    >>> hpmap = [np.random.randn(12), np.random.randn(12)]  # Example Healpix maps
+    >>> fld = map2fld(hpmap, mask)
+    """
+    if len(hpmap) == 2:
+        fld = nmt.NmtField(mask, [-hpmap[0], hpmap[1]])
+    else:
+        fld = nmt.NmtField(mask, [hpmap[0]])
+
+    return fld
 
 def get_map_for_probes(probes):
     """
@@ -274,33 +309,7 @@ def get_map_for_probes(probes):
 
     return maps, keys
 
-def get_iter(probe, cross, zbins):
-    
-    keymap = {'GC'  :  ['D{}'.format(i) for i in zbins],
-              'WL'  :  ['G{}'.format(i) for i in zbins],
-              'GGL' :  []}
-    
-    cross_selec = {True  : it.combinations_with_replacement(keymap[probe], 2),
-                   False : zip(keymap[probe], keymap[probe])} 
-
-    iter_probe = {'GC'  : cross_selec['GC' in cross],
-                  'WL'  : cross_selec['WL' in cross],
-                  'GGL' : it.product(keymap['GC'], keymap['WL'])}
-    
-    return iter_probe[probe]
-
-def map2fld(hpmap, mask):
-    if len(hpmap) == 2:
-        fld = nmt.NmtField(mask, [-hpmap[0], hpmap[1]])
-    else:
-        fld = nmt.NmtField(mask, [hpmap[0]])
-        
-    return fld
-
-def pixwin(nside, depixelate):
-    pix_dic = {True  : hp.sphtfunc.pixwin(nside)**2,
-               False : 1}
-    return pix_dic[depixelate]
+#---- Cl's ----#
 
 def compute_master(f_a, f_b, wsp, nside, depixelate):
     """
@@ -332,15 +341,11 @@ def compute_master(f_a, f_b, wsp, nside, depixelate):
     >>> compute_master(f_a, f_b, wsp, ns)
     array([...])
     """
-    
+
     cl_coupled = nmt.compute_coupled_cell(f_a, f_b)/pixwin(nside, depixelate)
     cl_decoupled = wsp.decouple_cell([cl_coupled[0]])
 
     return cl_decoupled[0]
-
-def decouple_noise(noise, wsp, nside, depixelate):
-    snl = np.array([ np.full(3 * nside, noise) ])/pixwin(nside, depixelate)
-    return wsp.decouple_cell(snl)[0]
 
 def edges_binning(NSIDE, lmin, bw):
     """
@@ -380,4 +385,308 @@ def edges_binning(NSIDE, lmin, bw):
 
     b = nmt.NmtBin.from_edges(elli, elle)
     return b
+
+#---- Noise and pixels ----#
+
+def shape_noise(tbin, fsky):
+    """
+    Compute the shape noise for a given tomographic bin.
+
+    Parameters
+    ----------
+    tbin : dict
+        Dictionary containing tomographic bin information.
+    fsky : float
+        Fraction of the sky covered by the survey.
+
+    Returns
+    -------
+    shape_noise : float
+        Shape noise estimate for the tomographic bin.
+
+    Notes
+    -----
+    - The shape noise is calculated as the variance of the sum of squared ellipticities divided by the number of galaxies.
+    - The formula is adjusted to account for the fraction of the sky surveyed.
+
+    Examples
+    --------
+    >>> tbin = {'gamma1': np.array([0.1, 0.2, 0.3]),
+    ...         'gamma2': np.array([0.2, 0.3, 0.4])}
+    >>> fsky = 0.7
+    >>> shape_noise(tbin, fsky)
+    0.001
+
+    """
+    ngal = tbin['gamma1'].size
+    var = ((tbin['gamma1']**2 + tbin['gamma2']**2)).sum() / ngal
+    return var * (2 * np.pi * fsky**2) / ngal
+
+def shot_noise(tbin, fsky):
+    """
+    Compute the shot noise for a given tomographic bin.
+
+    Parameters
+    ----------
+    tbin : dict
+        Dictionary containing tomographic bin information.
+    fsky : float
+        Fraction of the sky covered by the survey.
+
+    Returns
+    -------
+    shot_noise : float
+        Shot noise estimate for the tomographic bin.
+
+    Notes
+    -----
+    - The shot noise is calculated as the inverse of the number density of galaxies.
+    - The formula is adjusted to account for the fraction of the sky surveyed.
+
+    Examples
+    --------
+    >>> tbin = {'dec': np.array([10, 20, 30])}
+    >>> fsky = 0.5
+    >>> shot_noise(tbin, fsky)
+    0.007853981633974483
+    """
+    ngal = tbin['dec'].size
+    return (4 * np.pi * fsky**2) / ngal
+
+def compute_noise(tracer, tbin, fsky):
+    dic = {'D' : shot_noise(tbin, fsky),
+           'G' : shape_noise(tbin, fsky)}
+    return dic[tracer]
+
+def decouple_noise(noise, wsp, nside, depixelate):
+    """
+    Decouple the shot/shape noise power spectrum.
+
+    Parameters
+    ----------
+    noise : float
+        Shot/shape noise level.
+    wsp : NaMaster workspace containing pre-computed matrices.
+    nside : int
+        NSIDE parameter for the Healpix maps.
+    depixelate : bool
+        Flag indicating whether to square the pixel window function.
+
+    Returns
+    -------
+    snl_decoupled : array-like
+        Decoupled shot/shape noise power spectrum.
+
+    Notes
+    -----
+    Shot noise is the noise inherent in a measurement due to the discrete nature of the data.
+    The shot noise power spectrum is decoupled using the provided NaMaster workspace (`wsp`)
+    and the depixelation factor determined by the `depixelate` flag.
+
+    Examples
+    --------
+    >>> noise = 0.1
+    >>> wsp = nmt.NmtWorkspace()
+    >>> nside = 64
+    >>> depixelate = True
+    >>> decouple_noise(noise, wsp, nside, depixelate)
+    array([...])
+    """
+    snl = np.array([np.full(3 * nside, noise)]) / pixwin(nside, depixelate)
+    snl_decoupled = wsp.decouple_cell(snl)[0]
+    return snl_decoupled
+
+def debias(cl, noise, w, nside, debias_bool, depixelate_bool):
+    """
+    Debiases the angular power spectrum estimate by subtracting the decoupled noise.
+
+    Parameters
+    ----------
+    cl : array-like
+        Array containing the angular power spectrum estimate.
+    noise : float
+        Noise level estimate.
+    w : object
+        NaMaster workspace containing pre-computed matrices.
+    nside : int
+        NSIDE parameter for the Healpix maps.
+    debias_bool : bool
+        Boolean indicating whether to debias the spectrum.
+    depixelate_bool : bool
+        Boolean indicating whether to account for pixel window effects.
+
+    Returns
+    -------
+    debiased_cl : array-like
+        Debiased angular power spectrum estimate.
+
+    Notes
+    -----
+    - If `debias_bool` is True, the decoupled noise is subtracted from the angular power spectrum.
+    - The noise level estimate is used to compute the decoupled noise.
+    - The pixel window effect is accounted for if `depixelate_bool` is True.
+
+    Examples
+    --------
+    >>> cl = np.array([0.1, 0.2, 0.3])
+    >>> noise = 0.05
+    >>> w = nmt.NmtWorkspace()
+    >>> nside = 64
+    >>> debias_bool = True
+    >>> depixelate_bool = True
+    >>> debias(cl, noise, w, nside, debias_bool, depixelate_bool)
+    array([0.09451773, 0.19451773, 0.29451773])
+    """
+    if debias_bool:
+        cl -= decouple_noise(noise, w, nside, depixelate_bool)
+    return cl
+
+def pixwin(nside, depixelate):
+    """
+    Compute the pixel window function for a given NSIDE.
+
+    Parameters
+    ----------
+    nside : int
+        NSIDE parameter for the Healpix maps.
+    depixelate : bool
+        Flag indicating whether to square the pixel window function.
+
+    Returns
+    -------
+    pixwin : array-like
+        Pixel window function. If depixelate is True, the pixel window function is squared.
+
+    Notes
+    -----
+    The pixel window function describes the suppression of power due to finite pixel size
+    in the Healpix maps. If `depixelate` is True, the pixel window function is squared.
+    This function provides flexibility in handling depixelation depending on the requirement.
+
+    Examples
+    --------
+    >>> import healpy as hp
+    >>> nside = 64
+    >>> depixelate = True
+    >>> pixwin(nside, depixelate)
+    array([...])
+    """
+    pix_dic = {True: hp.sphtfunc.pixwin(nside) ** 2, False: 1}
+    return pix_dic[depixelate]
+
+#---- Iterators ----#
+
+def get_iter(probe, cross, zbins):
+    """
+    Get iterator for bin pairs based on the probe type and cross-correlation flag.
+
+    Parameters
+    ----------
+    probe : str
+        Probe type ('GC', 'WL', or 'GGL').
+    cross : bool
+        Flag indicating whether to compute cross-correlations.
+    zbins : list
+        List of redshift bin indices.
+
+    Returns
+    -------
+    iterator : iterator
+        Iterator yielding pairs of bin labels.
+
+    Notes
+    -----
+    - The function constructs a dictionary `keymap` mapping probe types to bin labels.
+    - Based on the cross-correlation flag, it selects the appropriate iterator method.
+    - The resulting iterator provides bin pairs for the specified probe type and cross-correlation flag.
+
+    Examples
+    --------
+    >>> probe = 'GC'
+    >>> cross = True
+    >>> zbins = [0, 1, 2]
+    >>> get_iter(probe, cross, zbins)
+    <itertools.combinations_with_replacement object at ...>
+    """
+    keymap = {'GC': ['D{}'.format(i) for i in zbins],
+              'WL': ['G{}'.format(i) for i in zbins],
+              'GGL': []}
+
+    cross_selec = {
+        True: it.combinations_with_replacement(keymap[probe], 2),
+        False: zip(keymap[probe], keymap[probe])
+    }
+
+    iter_probe = {
+        'GC': cross_selec['GC' in cross],
+        'WL': cross_selec['WL' in cross],
+        'GGL': it.product(keymap['GC'], keymap['WL'])
+    }
+
+    return iter_probe[probe]
+
+#---- Covariance ----#
+
+def errs_from_cov(cov, probe, nzbins, cross):
+    """
+    Compute errors from the covariance matrix.
+
+    Parameters
+    ----------
+    cov : array-like
+        Covariance matrix.
+    probe : str
+        Probe type ('GC', 'WL', or 'GGL').
+    nzbins : int
+        Number of redshift bins.
+    cross : bool
+        Flag indicating whether to compute cross-correlations.
+
+    Returns
+    -------
+    err_dic : dict
+        Dictionary containing error arrays for each bin pair.
+
+    Notes
+    -----
+    - If `probe` is 'GGL', the covariance matrix is assumed to be asymmetric.
+    - The number of pairs (`npairs`) is determined based on the probe type and cross-correlation flag.
+    - The function iterates over pairs of redshift bins and reshapes the error array accordingly.
+    - The errors are stored in a dictionary with keys representing the bin pair labels.
+
+    Examples
+    --------
+    >>> cov = np.random.rand(100, 100)  # Example covariance matrix
+    >>> probe = 'GC'
+    >>> nzbins = 5
+    >>> cross = True
+    >>> errs_from_cov(cov, probe, nzbins, cross)
+    {'0-0': array([...]), '0-1': array([...]), ...}
+    """
+    symmetric = True
+    if probe == 'GGL':
+        symmetric = False
+
+    if not cross:
+        npairs = nzbins
+    elif symmetric and cross:
+        npairs = int((nzbins * (nzbins - 1) / 2 + nzbins))
+    elif not symmetric and cross:
+        npairs = int(nzbins * nzbins)
+
+    cross_list = []
+    if cross:
+        cross_list = [probe]
+
+    iterator = get_iter(probe, cross_list, np.arange(nzbins))
+
+    nell = int(np.sqrt(cov.size) / npairs)
+    err_2d = np.reshape(np.sqrt(np.diag(cov)), (npairs, nell))
+    err_dic = {}
+    idx = 0
+    for (i, j) in iterator:
+        err_dic['{}-{}'.format(i, j)] = err_2d[idx]
+        idx += 1
+    return err_dic
+
 
