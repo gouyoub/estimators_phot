@@ -22,13 +22,19 @@ Dependencies:
 
 """
 
+import time
+import itertools as it
+
 import numpy as np
+from scipy.interpolate import InterpolatedUnivariateSpline
+
 import healpy as hp
 import pymaster as nmt
 from astropy.io import fits
+import twopoint
 
-import time
-import itertools as it
+import string_manager as stma
+
 
 
 #---- Redshift binning ----#
@@ -85,6 +91,7 @@ def create_redshift_bins(file_path, selected_bins, zmin=0.2, zmax=2.54, nbins=13
 
     tomo_bins = []
     ngal_bin = []
+    selecz = []
     print('Dividing the sample in equi-distant tomographic bins')
     for i in selected_bins:
         if not (0 <= i < nbins):
@@ -105,6 +112,36 @@ def create_redshift_bins(file_path, selected_bins, zmin=0.2, zmax=2.54, nbins=13
     hdul.close()
 
     return tomo_bins, ngal_bin
+
+def build_nz(tbin, nb=400, nz=10000):
+
+    nzbins = len(tbin)
+    # find zmin and zmax
+    zmin = tbin[0]['z'].min()
+    zmax = tbin[0]['z'].max()
+    for i in range(nzbins):
+        if tbin[i]['z'].min() < zmin : zmin = tbin[i]['z'].min()
+        if tbin[i]['z'].max() > zmax : zmax = tbin[i]['z'].max()
+    print(zmin, zmax)
+
+    # histogram quantities
+    nofz = np.zeros((nzbins, nb))
+    zb_centers = np.zeros((nzbins, nb))
+    # interpolator quantities
+    z_arr = np.linspace(zmin, zmax, nz)
+    nz_interp = np.zeros((nzbins+1, nz))
+    nz_interp[0] = z_arr
+    for i in range(nzbins):
+        # construct histogram
+        nofz[i], b = np.histogram(tbin[i]['z'], bins=nb, density=True)
+        zb_centers[i] = (np.diff(b)/2.+b[:nb])
+        # interpolate
+        func = InterpolatedUnivariateSpline(zb_centers[i], nofz[i], k=1)
+        nz_interp[i+1] = func(z_arr)
+        nz_interp[i+1][nz_interp[i+1]<0] = 0
+
+    return nz_interp
+
 
 #---- Maps ----#
 
@@ -173,7 +210,7 @@ def shear_map(tbin, nside, mask):
     hpmapg1 = hpmapg1/nbar
     hpmapg2 = hpmapg2/nbar
 
-    return [hpmapg1, hpmapg2], shapenoise
+    return [hpmapg1, hpmapg2]
 
 def density_map(tbin, nside, mask):
     """
@@ -231,7 +268,7 @@ def density_map(tbin, nside, mask):
     nbar = ngal / npix / fsky
     hpmap = hpmap / nbar - mask
 
-    return [hpmap], shotnoise
+    return [hpmap]
 
 def map2fld(hpmap, mask):
     """
@@ -265,6 +302,7 @@ def map2fld(hpmap, mask):
     >>> hpmap = [np.random.randn(12), np.random.randn(12)]  # Example Healpix maps
     >>> fld = map2fld(hpmap, mask)
     """
+
     if len(hpmap) == 2:
         fld = nmt.NmtField(mask, [-hpmap[0], hpmap[1]])
     else:
@@ -574,6 +612,177 @@ def pixwin(nside, depixelate):
     pix_dic = {True: hp.sphtfunc.pixwin(nside) ** 2, False: 1}
     return pix_dic[depixelate]
 
+#---- Saving ----#
+def save_twopoint(cls_dic, bnmt, nofz, ngal, zbins, probes, cross, outname):
+    """
+    Save the angular power spectra and number density data to a TwoPoint FITS file.
+
+    Parameters
+    ----------
+    cls_dic : dict
+        Dictionary containing the angular power spectra estimates.
+    bnmt : object
+        NaMaster binning object.
+    nofz : array-like
+        Array containing the redshifts and the n(z) for each bin.
+    ngal : int or array-like
+        Number density of galaxies.
+    zbins : array-like
+        Array containing the indices of redshift bins.
+    probes : list
+        List of probe types (e.g., ['GC', 'WL', 'GGL']).
+    cross : bool
+        Boolean indicating whether cross-correlations are computed.
+    outname : str
+        Output filename for the TwoPoint FITS file.
+
+    Notes
+    -----
+    - The number density data is formatted from `nofz` and `ngal`.
+    - The angular power spectra are formatted for each probe using `format_spectra_twopoint`.
+    - All data is saved to a TwoPoint FITS file using the `to_fits` method.
+
+    Examples
+    --------
+    >>> cls_dic = {'D0-D0': np.array([0.1, 0.2, 0.3]), 'D0-D1': np.array([0.2, 0.3, 0.4])}
+    >>> bnmt = nmt.NmtBin.from_edges([0, 100, 200], [100, 200, 300])
+    >>> nofz = (np.array([0.5, 1.0]), np.array([1.0, 2.0]))
+    >>> ngal = 100
+    >>> zbins = [0, 1]
+    >>> probes = ['GC']
+    >>> cross = False
+    >>> outname = 'twopoint.fits'
+    >>> save_twopoint(cls_dic, bnmt, nofz, ngal, zbins, probes, cross, outname)
+    """
+    # format n(z)
+    z_mid  = nofz[0]
+    z_high = z_mid + np.diff(z_mid)[0]
+    z_low  = z_mid - np.diff(z_mid)[0]
+
+    nz_source = twopoint.NumberDensity('nz_source', zlow=z_low, z=z_mid, zhigh=z_high, nzs=nofz[1:], ngal=ngal)
+    nz_lens = twopoint.NumberDensity('nz_lens', zlow=z_low, z=z_mid, zhigh=z_high, nzs=nofz[1:], ngal=ngal)
+
+    kernels = []
+    kernels.append(nz_lens)
+    kernels.append(nz_source)
+
+    # format spectra
+    spectra = []
+    for p in probes :
+        spectra.append(format_spectra_twopoint(cls_dic, bnmt, p, cross, zbins))
+
+    # save twopoint fits file
+    data = twopoint.TwoPointFile(spectra, kernels, None, None)
+    data.to_fits(outname, overwrite=True)
+
+def format_spectra_twopoint(cls_dic, bnmt, probe, cross, zbins):
+    """
+    Format the angular power spectra for a TwoPoint file.
+
+    Parameters
+    ----------
+    cls_dic : dict
+        Dictionary containing the angular power spectra estimates.
+    bnmt : object
+        NaMaster binning object.
+    probe : str
+        Probe type (e.g., 'GC', 'WL', 'GGL').
+    cross : bool
+        Boolean indicating whether cross-correlations are computed.
+    zbins : array-like
+        Array containing the indices of redshift bins.
+
+    Returns
+    -------
+    spectrum : object
+        SpectrumMeasurement object containing the formatted spectra.
+
+    Notes
+    -----
+    - The formatted spectra are constructed as a SpectrumMeasurement object.
+    - The angular power spectra estimates are retrieved from `cls_dic`.
+    - Redshift bin indices are used to identify the bins in the spectra.
+
+    Examples
+    --------
+    >>> cls_dic = {'D0-D0': np.array([0.1, 0.2, 0.3]), 'D0-D1': np.array([0.2, 0.3, 0.4])}
+    >>> bnmt = nmt.NmtBin.from_edges([0, 100, 200], [100, 200, 300])
+    >>> probe = 'GC'
+    >>> cross = False
+    >>> zbins = [0, 1]
+    >>> format_spectra_twopoint(cls_dic, bnmt, probe, cross, zbins)
+    <twopoint.core.SpectrumMeasurement object at ...>
+    """
+
+    # format ell binning
+    ell = bnmt.get_effective_ells()
+    nell = ell.size
+    ell_max = np.zeros((nell))
+    ell_min = np.zeros((nell))
+    for i in range(bnmt.get_effective_ells().size):
+        ell_max[i] = bnmt.get_ell_max(i)
+        ell_min[i] = bnmt.get_ell_min(i)
+
+    # initialise lists of info and quantities
+    windows = "SAMPLE"
+    multipole_bin = []
+    multipole       = []
+    bin1        = []
+    bin2        = []
+    multipole_min_arr = []
+    multipole_max_arr = []
+    cell = []
+
+    # fill lists of info and quantities
+    probe_iter = get_iter(probe, cross, zbins)
+    for pi, pj in probe_iter:
+        _, i = stma.mysplit(pi)
+        _, j = stma.mysplit(pj)
+        bin1.append(np.repeat(i, nell))
+        bin2.append(np.repeat(j, nell))
+        multipole.append(ell)
+        multipole_min_arr.append(ell_min)
+        multipole_max_arr.append(ell_max)
+        multipole_bin.append(np.arange(nell))
+        cell.append(cls_dic['{}-{}'.format(pi,pj)])
+
+    # convert all the lists of vectors into long single vectors
+    bin1 = np.concatenate(bin1)
+    bin2 = np.concatenate(bin2)
+    multipole = np.concatenate(multipole)
+    multipole_min_arr = np.concatenate(multipole_min_arr)
+    multipole_max_arr = np.concatenate(multipole_max_arr)
+    multipole_bin = np.concatenate(multipole_bin)
+    bins = (bin1, bin2)
+    cell = np.concatenate(cell)
+
+    # define types and nz_sample
+    types = {'GC' : (twopoint.Types.galaxy_position_fourier,
+                     twopoint.Types.galaxy_position_fourier),
+             'WL' : (twopoint.Types.galaxy_shear_emode_fourier,
+                     twopoint.Types.galaxy_shear_emode_fourier),
+             'GGL' : (twopoint.Types.galaxy_position_fourier,
+                      twopoint.Types.galaxy_shear_emode_fourier)}
+
+    nz_sample = {'GC' : ('nz_lens', 'nz_lens'),
+          'WL' : ('nz_source', 'nz_source'),
+          'GGL' : ('nz_lens', 'nz_source')}
+
+    # construct the SpectrumMeasurement object for the given probe
+    spectrum = twopoint.SpectrumMeasurement('cell'+probe,
+                                     bins,
+                                     types[probe],
+                                     nz_sample[probe],
+                                     windows,
+                                     multipole_bin,
+                                     value=cell,
+                                     angle=multipole,
+                                     angle_min=multipole_min_arr,
+                                     angle_max=multipole_max_arr,
+                                     angle_unit='none')
+
+    return spectrum
+
 #---- Iterators ----#
 
 def get_iter(probe, cross, zbins):
@@ -603,13 +812,62 @@ def get_iter(probe, cross, zbins):
     Examples
     --------
     >>> probe = 'GC'
-    >>> cross = True
+    >>> cross = ['GC']
     >>> zbins = [0, 1, 2]
     >>> get_iter(probe, cross, zbins)
     <itertools.combinations_with_replacement object at ...>
     """
     keymap = {'GC': ['D{}'.format(i) for i in zbins],
               'WL': ['G{}'.format(i) for i in zbins],
+              'GGL': []}
+
+    cross_selec = {
+        True: it.combinations_with_replacement(keymap[probe], 2),
+        False: zip(keymap[probe], keymap[probe])
+    }
+
+    iter_probe = {
+        'GC': cross_selec['GC' in cross],
+        'WL': cross_selec['WL' in cross],
+        'GGL': it.product(keymap['GC'], keymap['WL'])
+    }
+
+    return iter_probe[probe]
+
+def get_iter_nokeymap(probe, cross, zbins):
+    """
+    Get iterator for bin pairs based on the probe type and cross-correlation flag.
+
+    Parameters
+    ----------
+    probe : str
+        Probe type ('GC', 'WL', or 'GGL').
+    cross : bool
+        Flag indicating whether to compute cross-correlations.
+    zbins : list
+        List of redshift bin indices.
+
+    Returns
+    -------
+    iterator : iterator
+        Iterator yielding pairs of bin labels.
+
+    Notes
+    -----
+    - The function constructs a dictionary `keymap` mapping probe types to bin labels.
+    - Based on the cross-correlation flag, it selects the appropriate iterator method.
+    - The resulting iterator provides bin pairs for the specified probe type and cross-correlation flag.
+
+    Examples
+    --------
+    >>> probe = 'GC'
+    >>> cross = ['GC']
+    >>> zbins = [0, 1, 2]
+    >>> get_iter(probe, cross, zbins)
+    <itertools.combinations_with_replacement object at ...>
+    """
+    keymap = {'GC': ['{}'.format(i) for i in zbins],
+              'WL': ['{}'.format(i) for i in zbins],
               'GGL': []}
 
     cross_selec = {

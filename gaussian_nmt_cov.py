@@ -24,9 +24,9 @@ mask_fits = filenames['mask']
 ref_cell = filenames['cell']
 workspace_fits = filenames['workspace']
 output_name = filenames['output']
-nzbins = filenames['nzbins']
-auto_only = filenames['auto_only']
-symmetric = filenames['symmetric']
+nzbins = probe_selection['nzbins']
+cross = probe_selection['cross']
+probe = probe_selection['probe']
 
 # -- Get the input
 # - Get the mask and make it a field
@@ -37,9 +37,10 @@ print('Get mask took ', time.time()-start, 's', flush=True)
 
 # - Get the Cls
 start = time.time()
-Cl, keys = loading.get_cosmosis_Cl(ref_cell, nzbins, symmetric)
-ncl = len(Cl)  # get the number of pairs
-if auto_only:
+Cl, keys = loading.get_cosmosis_Cl(ref_cell, nzbins, probe, cross)
+# keys = Cl.keys()
+ncl = len(Cl)-1  # get the number of pairs
+if cross == False:
     ncl = nzbins
 print('Get Cl took ', time.time()-start, 's', flush=True)
 
@@ -58,6 +59,7 @@ print('Get cov workspace took ', time.time()-start, 's', flush=True)
 
 # -- Initialise covariance matrix
 covmat = np.zeros((ncl*nell, ncl*nell))
+print(ncl)
 
 # -- Loop over all blocks (pair-pair correlations) to construct the full covariance matrix.
 start = time.time()
@@ -67,7 +69,7 @@ for key in keys:
     probeA, probeB = key.split('-')
     Cl['-'.join([probeB, probeA])] = Cl[key]
 
-if auto_only:
+if cross == False:
     keys = ['-'.join([str(i+1), str(i+1)]) for i in range(nzbins)]
 
 for (idx1, key1), (idx2, key2) in itertools.combinations_with_replacement(enumerate(keys), 2):
