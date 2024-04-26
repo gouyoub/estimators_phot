@@ -9,7 +9,7 @@ import time
 import configparser
 
 config = configparser.ConfigParser()
-config.read('inifiles/example_cov.cfg')
+config.read('inifiles/FS2_GC_auto_firstchain_cov.cfg')
 print("-----------------**  ARGUMENTS  **------------------------")
 for sec in config.sections():
     print('[{}]'.format(sec))
@@ -37,8 +37,8 @@ print('Get mask took ', time.time()-start, 's', flush=True)
 
 # - Get the Cls
 start = time.time()
-Cl, keys = loading.get_cosmosis_Cl(ref_cell, nzbins, probe, cross)
-# keys = Cl.keys()
+Cl, _ = loading.get_cosmosis_Cl(ref_cell, nzbins, probe, True)
+_, keys = loading.get_cosmosis_Cl(ref_cell, nzbins, probe, cross)
 ncl = len(Cl)-1  # get the number of pairs
 if cross == False:
     ncl = nzbins
@@ -69,13 +69,14 @@ for key in keys:
     probeA, probeB = key.split('-')
     Cl['-'.join([probeB, probeA])] = Cl[key]
 
-if cross == False:
-    keys = ['-'.join([str(i+1), str(i+1)]) for i in range(nzbins)]
+# if cross == False:
+#     keys = ['-'.join([str(i+1), str(i+1)]) for i in range(nzbins)]
 
 for (idx1, key1), (idx2, key2) in itertools.combinations_with_replacement(enumerate(keys), 2):
     print(key1, key2, flush=True)
     probeA, probeB = key1.split('-')
     probeC, probeD = key2.split('-')
+    print(probeA, probeB, probeC, probeD)
 
     covmat[idx1*nell:(idx1+1)*nell, idx2*nell:(idx2+1)*nell] =\
         nmt.gaussian_covariance(cov_workspace, 0, 0, 0, 0,

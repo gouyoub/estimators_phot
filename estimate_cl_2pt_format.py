@@ -23,7 +23,7 @@ import itertools as it
 
 
 config = configparser.ConfigParser()
-config.read('inifiles/example.cfg')
+config.read('inifiles/FS2_2x2_firstchain.cfg')
 print("-----------------**  ARGUMENTS  **------------------------")
 for sec in config.sections():
     print('[{}]'.format(sec))
@@ -55,7 +55,7 @@ tomo_bins, ngal_bins = al.create_redshift_bins(in_out['catalog'],
 if z_binning['save_nofz']:
     print('\n Saving the n(z) and galaxy number density')
     nofz = al.build_nz(tomo_bins)
-    np.save(z_binning['nofz_name'], nofz)
+    np.savetxt(z_binning['nofz_name'], nofz.T)
     np.savetxt(z_binning['ngal_name'], ngal_bins)
 if z_binning['only_nofz']:
     print('\nYou only asked for the n(z)')

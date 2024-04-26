@@ -738,8 +738,8 @@ def format_spectra_twopoint(cls_dic, bnmt, probe, cross, zbins):
     for pi, pj in probe_iter:
         _, i = stma.mysplit(pi)
         _, j = stma.mysplit(pj)
-        bin1.append(np.repeat(i, nell))
-        bin2.append(np.repeat(j, nell))
+        bin1.append(np.repeat(int(i), nell))
+        bin2.append(np.repeat(int(j), nell))
         multipole.append(ell)
         multipole_min_arr.append(ell_min)
         multipole_max_arr.append(ell_max)
