@@ -4,12 +4,14 @@ import healpy as hp
 
 import loading
 
+import sys
 import itertools
 import time
 import configparser
 
 config = configparser.ConfigParser()
-config.read('inifiles/FS2_GC_auto_firstchain_cov.cfg')
+configname = sys.argv[1]
+config.read(configname)
 print("-----------------**  ARGUMENTS  **------------------------")
 for sec in config.sections():
     print('[{}]'.format(sec))
@@ -20,6 +22,7 @@ for sec in config.sections():
 # -- Arguments
 filenames = loading.load_it(config._sections['filenames'])
 probe_selection = loading.load_it(config._sections['probe_selection'])
+noise = loading.load_it(config._sections['noise'])
 mask_fits = filenames['mask']
 ref_cell = filenames['cell']
 workspace_fits = filenames['workspace']
@@ -27,6 +30,10 @@ output_name = filenames['output']
 nzbins = probe_selection['nzbins']
 cross = probe_selection['cross']
 probe = probe_selection['probe']
+fsky = noise['fsky']
+ng_shear = noise['ng_shear_perbin']
+ng_density = noise['ng_density_perbin']
+sigma_e_tot = noise['sigma_e_tot']
 
 # -- Get the input
 # - Get the mask and make it a field
@@ -37,12 +44,33 @@ print('Get mask took ', time.time()-start, 's', flush=True)
 
 # - Get the Cls
 start = time.time()
-Cl, _ = loading.get_cosmosis_Cl(ref_cell, nzbins, probe, True)
-_, keys = loading.get_cosmosis_Cl(ref_cell, nzbins, probe, cross)
-ncl = len(Cl)-1  # get the number of pairs
-if cross == False:
-    ncl = nzbins
+Cl = {}
+keys = []
+keys_all = []
+
+if len(probe)>1:
+    for p in ['GC', 'GGL', 'WL']:
+        Cl_temp, keys_all_temp = loading.get_cosmosis_Cl(ref_cell, nzbins, p, True)
+        Cl.update(Cl_temp)
+        keys_all += keys_all_temp
+
+    for (p,c) in zip(probe, cross):
+        _, keys_temp = loading.get_cosmosis_Cl(ref_cell, nzbins, p, c)
+        keys += keys_temp
+else:
+    Cl_temp, keys_all_temp = loading.get_cosmosis_Cl(ref_cell, nzbins, probe[0], True)
+    Cl.update(Cl_temp)
+    keys_all += keys_all_temp
+    _, keys_temp = loading.get_cosmosis_Cl(ref_cell, nzbins, probe[0], cross[0])
+    keys += keys_temp
+
+ncl = len(keys)  # get the number of pairs
+print('The number of Cls is : ', ncl)
 print('Get Cl took ', time.time()-start, 's', flush=True)
+
+# - Get galaxy number density
+ng_density = np.loadtxt(noise['ng_density_perbin'])
+ng_shear = np.loadtxt(noise['ng_shear_perbin'])
 
 # - Get the workspace
 start = time.time()
@@ -50,6 +78,14 @@ workspace = nmt.NmtWorkspace()
 workspace.read_from(workspace_fits)
 nell = workspace.get_bandpower_windows().shape[1]
 print('Get workspace took ', time.time()-start, 's', flush=True)
+
+# -- Add noise term
+for p in ['GC', 'WL']:
+    _, keys_auto = loading.get_cosmosis_Cl(ref_cell, nzbins, p, False)
+    for zi,k in enumerate(keys_auto):
+        noise_term = 4.*np.pi*fsky**2/ng_density[zi]
+        if p == 'WL': noise_term *= sigma_e_tot[zi]
+        Cl[k] += noise_term
 
 # -- Initialise covariance workspace
 start = time.time()
@@ -59,15 +95,17 @@ print('Get cov workspace took ', time.time()-start, 's', flush=True)
 
 # -- Initialise covariance matrix
 covmat = np.zeros((ncl*nell, ncl*nell))
-print(ncl)
 
 # -- Loop over all blocks (pair-pair correlations) to construct the full covariance matrix.
 start = time.time()
 
 # Get symetric Cls for permutations
-for key in keys:
-    probeA, probeB = key.split('-')
-    Cl['-'.join([probeB, probeA])] = Cl[key]
+for p in probe:
+    if p != 'GGL':
+        for key in keys_all:
+            probeA, probeB = key.split('-')
+            print('-'.join([probeB, probeA]), key)
+            Cl['-'.join([probeB, probeA])] = Cl[key]
 
 # if cross == False:
 #     keys = ['-'.join([str(i+1), str(i+1)]) for i in range(nzbins)]
@@ -76,7 +114,6 @@ for (idx1, key1), (idx2, key2) in itertools.combinations_with_replacement(enumer
     print(key1, key2, flush=True)
     probeA, probeB = key1.split('-')
     probeC, probeD = key2.split('-')
-    print(probeA, probeB, probeC, probeD)
 
     covmat[idx1*nell:(idx1+1)*nell, idx2*nell:(idx2+1)*nell] =\
         nmt.gaussian_covariance(cov_workspace, 0, 0, 0, 0,
