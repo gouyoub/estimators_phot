@@ -113,7 +113,7 @@ def create_redshift_bins(file_path, selected_bins, zmin=0.2, zmax=2.54, nbins=13
 
     return tomo_bins, ngal_bin
 
-def build_nz(tbin, nb=400, nz=10000):
+def build_nz(tbin, nb=400, nz=1000):
 
     nzbins = len(tbin)
     # find zmin and zmax
@@ -122,7 +122,6 @@ def build_nz(tbin, nb=400, nz=10000):
     for i in range(nzbins):
         if tbin[i]['z'].min() < zmin : zmin = tbin[i]['z'].min()
         if tbin[i]['z'].max() > zmax : zmax = tbin[i]['z'].max()
-    print(zmin, zmax)
 
     # histogram quantities
     nofz = np.zeros((nzbins, nb))
@@ -422,6 +421,13 @@ def edges_binning(NSIDE, lmin, bw):
         elle[i] = lmin + (i+1)*bw
 
     b = nmt.NmtBin.from_edges(elli, elle)
+    return b
+
+def edges_log_binning(NSIDE, lmin, nbl):
+    lmax = 2*NSIDE
+    bin_edges = np.logspace(np.log10(lmin), np.log10(lmax), nbl)
+    bin_edges = np.floor(bin_edges).astype(int)
+    b = nmt.NmtBin.from_edges(bin_edges[:-1], bin_edges[1:])
     return b
 
 #---- Noise and pixels ----#
