@@ -32,12 +32,94 @@ import healpy as hp
 import pymaster as nmt
 from astropy.io import fits
 import twopoint
+from statsmodels.stats.weightstats import DescrStatsW
 
 import string_manager as stma
 
 
 
 #---- Redshift binning ----#
+
+def create_redshift_bins_complete(file_path, selected_bins, sample,
+                                  division='EP_weights',
+                                  nofz_redshift_type='true_redshift_gal',
+                                  zmin=0.2, zmax=2.54, nbins=13):
+    """
+    Create redshift bins and corresponding galaxy catalogs from a FITS file
+    for a specified set of bins.
+
+    Parameters
+    ----------
+    file_path : str
+        Path to the FITS file containing galaxy data.
+    selected_bins : list
+        List of indices specifying the redshift bins to consider.
+    zmin : float, optional
+        Minimum redshift for the bins (default is 0.2).
+    zmax : float, optional
+        Maximum redshift for the bins (default is 2.54).
+    nbins : int, optional
+        Number of redshift bins (default is 13).
+
+    Returns
+    -------
+    tomo_bins : list
+        List of dictionaries containing galaxy catalog information for each
+        selected redshift bin.
+    ngal_bin : list
+        Number of galaxies in each selected redshift bin.
+
+    """
+
+    hdul = fits.open(file_path)
+
+    # define z edges for the given division type (ED, EP, ...)
+    if division == 'ED' :
+        print('Dividing the sample in equi-distant tomographic bins.')
+        z_edges = np.linspace(zmin, zmax, nbins + 1)
+
+    elif division == 'EP_weight':
+        print('Dividing the sample in equi-populated tomographic bins,\
+              accounting for weights.')
+        cut = (hdul[1].data['zp'] >= zmin) & (hdul[1].data['zp'] < zmax)
+        data_cut = {
+                'ra': hdul[1].data['ra_gal'][cut],
+                'dec': hdul[1].data['dec_gal'][cut],
+                'z': hdul[1].data[nofz_redshift_type][cut],
+                'zp': hdul[1].data['zp'][cut],
+                'gamma1': hdul[1].data['gamma1'][cut],
+                'gamma2': hdul[1].data['gamma2'][cut]
+            }
+        weight = {'source':'she_weight',
+                  'lens':'phz_weight'}
+
+        wq = DescrStatsW(data=data_cut['zp'], weights=data_cut[weight[sample]])
+        z_edges = wq.quantile(probs=np.linspace(0,1,nbins+1), return_pandas=False)
+
+    # do the actual division in tomographic bins
+    tomo_bins = []
+    ngal_bin = []
+    for i in selected_bins:
+        if not (0 <= i < nbins):
+            raise ValueError(f"Invalid bin index: {i}. It should be in the range [0, {nbins}).")
+        print('- bin {}/{}'.format(i, nbins))
+        selection = (hdul[1].data['zp'] >= z_edges[i]) & (hdul[1].data['zp'] <= z_edges[i+1])
+        ngal_bin.append(hdul[1].data[nofz_redshift_type][selection].size)
+
+        tbin = {
+            'ra': hdul[1].data['ra_gal'][selection],
+            'dec': hdul[1].data['dec_gal'][selection],
+            'z': hdul[1].data[nofz_redshift_type][selection]
+        }
+        if sample == 'source':
+            tbin['gamma1'] = hdul[1].data['gamma1'][selection]
+            tbin['gamma2'] = hdul[1].data['gamma2'][selection]
+
+        tomo_bins.append(tbin)
+
+    hdul.close()
+
+    return tomo_bins, ngal_bin
 
 def create_redshift_bins(file_path, selected_bins, zmin=0.2, zmax=2.54, nbins=13):
     """
@@ -91,7 +173,6 @@ def create_redshift_bins(file_path, selected_bins, zmin=0.2, zmax=2.54, nbins=13
 
     tomo_bins = []
     ngal_bin = []
-    selecz = []
     print('Dividing the sample in equi-distant tomographic bins')
     for i in selected_bins:
         if not (0 <= i < nbins):
@@ -381,9 +462,9 @@ def compute_master(f_a, f_b, wsp, nside, depixelate):
     """
 
     cl_coupled = nmt.compute_coupled_cell(f_a, f_b)/pixwin(nside, depixelate)
-    cl_decoupled = wsp.decouple_cell([cl_coupled[0]])
+    cl_decoupled = wsp.decouple_cell(cl_coupled)
 
-    return cl_decoupled[0]
+    return cl_decoupled
 
 def edges_binning(NSIDE, lmin, bw):
     """
@@ -576,7 +657,8 @@ def debias(cl, noise, w, nside, debias_bool, depixelate_bool):
     array([0.09451773, 0.19451773, 0.29451773])
     """
     if debias_bool:
-        cl -= decouple_noise(noise, w, nside, depixelate_bool)
+        for m in range(len(cl)):
+            cl[m] -= decouple_noise(noise, w, nside, depixelate_bool)
     return cl
 
 def pixwin(nside, depixelate):

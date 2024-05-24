@@ -45,18 +45,42 @@ mask = hp.read_map(in_out['mask'])
 fsky = np.mean(mask)
 
 #-- Redshift binning
-tomo_bins, ngal_bins = al.create_redshift_bins(in_out['catalog'],
-                                               z_binning['selected_bins'],
-                                               z_binning['zmin'],
-                                               z_binning['zmax'],
-                                               z_binning['nztot'])
+if 'GC' in probe_selection:
+    tomo_bins_lens, ngal_bins_lens = al.create_redshift_bins_complete(in_out['catalog_lens'],
+                                                z_binning['selected_bins'],
+                                                'lens',
+                                                z_binning['division'],
+                                                z_binning['nofz_redshift_type'],
+                                                z_binning['zmin'],
+                                                z_binning['zmax'],
+                                                z_binning['nztot'])
+
+if 'WL' in probe_selection:
+    tomo_bins_source, ngal_bins_source = al.create_redshift_bins_complete(in_out['catalog_source'],
+                                                z_binning['selected_bins'],
+                                                'source',
+                                                z_binning['division'],
+                                                z_binning['nofz_redshift_type'],
+                                                z_binning['zmin'],
+                                                z_binning['zmax'],
+                                                z_binning['nztot'])
+
 
 #-- Build n(z)
-if z_binning['save_nofz']:
-    print('\n Saving the n(z) and galaxy number density')
-    nofz = al.build_nz(tomo_bins)
-    np.savetxt(z_binning['nofz_name'], nofz.T)
-    np.savetxt(z_binning['ngal_name'], ngal_bins)
+
+nofz_name_ref, nofz_name_ext = z_binning['nofz_name'].split('.')
+ngal_name_ref, ngal_name_ext = z_binning['ngal_name'].split('.')
+print('\n Saving the n(z) and galaxy number density')
+if 'GC' in probe_selection:
+    nofz_lens = al.build_nz(tomo_bins_lens)
+    np.savetxt(nofz_name_ref+'_lens.'+nofz_name_ext, nofz.T)
+    np.savetxt(ngal_name_ref+'_lens.'+ngal_name_ext, ngal_bins_lens)
+
+if 'WL' in probe_selection:
+    nofz_source = al.build_nz(tomo_bins_lens)
+    np.savetxt(nofz_name_ref+'_source.'+nofz_name_ext, nofz.T)
+    np.savetxt(ngal_name_ref+'_source.'+ngal_name_ext, ngal_bins_lens)
+
 if z_binning['only_nofz']:
     print('\nYou only asked for the n(z)')
     print('\nDONE')
@@ -69,6 +93,11 @@ compute_map, key_map = al.get_map_for_probes(probe_selection['probes'])
 for map, k in zip(compute_map, key_map):
     for i, izb in enumerate(z_binning['selected_bins']):
         print('Map bin{}'.format(izb))
+        if k == 'D' :
+            tomo_bins = tomo_bins_lens
+        if k == 'G' :
+            tomo_bins = tomo_bins_source
+
         maps_dic['{}{}'.format(k,izb)] = map(tomo_bins[i], nside, mask)
         noise_dic['{}{}'.format(k,izb)] = al.compute_noise(k, tomo_bins[i], fsky)
 
@@ -97,7 +126,17 @@ for probe in probe_selection['probes']:
         if pa == pb:
             cl = al.debias(cl, noise_dic[pa], w, nside, noise['debias'], pixels['depixelate'])
 
-        cls_dic['{}-{}'.format(pa,pb)] = cl
+        if probe == 'GC':
+            cls_dic['{}-{}'.format(pa,pb)] = cl[0]
+        if probe == 'WL':
+            cls_dic['{}_E-{}_E'.format(pa,pb)] = cl[0]
+            cls_dic['{}_E-{}_B'.format(pa,pb)] = cl[1]
+            cls_dic['{}_B-{}_E'.format(pa,pb)] = cl[2]
+            cls_dic['{}_B-{}_B'.format(pa,pb)] = cl[3]
+        if probe == 'GGL':
+            cls_dic['{}-{}_E'.format(pa,pb)] = cl[0]
+            cls_dic['{}-{}_B'.format(pa,pb)] = cl[1]
+
 
 cls_dic['ell'] = bnmt.get_effective_ells()
 
