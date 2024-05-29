@@ -47,7 +47,7 @@ mask = hp.read_map(in_out['mask'])
 fsky = np.mean(mask)
 
 #-- Redshift binning
-if 'GC' or 'GGL' in probe_selection:
+if 'GC' or 'GGL' in probe_selection['probes']:
     tomo_bins_lens, ngal_bins_lens = al.create_redshift_bins_complete(in_out['catalog_lens'],
                                                 z_binning['selected_bins'],
                                                 'lens',
@@ -58,7 +58,7 @@ if 'GC' or 'GGL' in probe_selection:
                                                 z_binning['nztot'])
     ngal_arcmin_lens = (ngal_bins_lens/(4*np.pi*fsky**2))/(((180/np.pi)**2)*3600)
 
-if 'WL' or 'GGL' in probe_selection:
+if 'WL' or 'GGL' in probe_selection['probes']:
     tomo_bins_source, ngal_bins_source = al.create_redshift_bins_complete(in_out['catalog_source'],
                                                 z_binning['selected_bins'],
                                                 'source',
@@ -77,14 +77,14 @@ ngal_name_ref, ngal_name_ext = z_binning['ngal_name'].split('.')
 nofz_dic = {}
 ngal_dic = {}
 print('\n Saving the n(z) and galaxy number density')
-if 'GC' in probe_selection:
+if 'GC' or 'GGL' in probe_selection['probes']:
     nofz_lens = al.build_nz(tomo_bins_lens)
     np.savetxt(nofz_name_ref+'_lens.'+nofz_name_ext, nofz_lens.T)
     np.savetxt(ngal_name_ref+'_lens.'+ngal_name_ext, ngal_arcmin_lens)
     nofz_dic['lens'] = nofz_lens
     ngal_dic['lens'] = ngal_arcmin_lens
 
-if 'WL' in probe_selection:
+if 'WL' or 'GGL' in probe_selection['probes']:
     nofz_source = al.build_nz(tomo_bins_source)
     np.savetxt(nofz_name_ref+'_source.'+nofz_name_ext, nofz_source.T)
     np.savetxt(ngal_name_ref+'_source.'+ngal_name_ext, ngal_arcmin_source)
@@ -107,7 +107,6 @@ for map, k in zip(compute_map, key_map):
             tomo_bins = tomo_bins_lens
         if k == 'G' :
             tomo_bins = tomo_bins_source
-
         maps_dic['{}{}'.format(k,izb)] = map(tomo_bins[i], nside, mask)
         noise_dic['{}{}'.format(k,izb)] = al.compute_noise(k, tomo_bins[i], fsky)
 

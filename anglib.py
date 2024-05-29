@@ -31,8 +31,10 @@ from scipy.interpolate import InterpolatedUnivariateSpline
 import healpy as hp
 import pymaster as nmt
 from astropy.io import fits
+from astropy.table import Table
 import twopoint
 from statsmodels.stats.weightstats import DescrStatsW
+
 
 import string_manager as stma
 
@@ -70,8 +72,9 @@ def create_redshift_bins_complete(file_path, selected_bins, sample,
         Number of galaxies in each selected redshift bin.
 
     """
-
-    hdul = fits.open(file_path)
+    print('\nTomographic binning for {} sample'.format(sample))
+    dat = Table.read(file_path, format='fits')
+    df = dat.to_pandas()
 
     # define z edges for the given division type (ED, EP, ...)
     if division == 'ED' :
@@ -83,25 +86,12 @@ def create_redshift_bins_complete(file_path, selected_bins, sample,
         print('accounting for weights.')
 
         # cut data at appropriate redshift edges
-        cut = (hdul[1].data['zp'] >= zmin) & (hdul[1].data['zp'] < zmax)
-
-        data_cut = {
-                'ra': hdul[1].data['ra'][cut],
-                'dec': hdul[1].data['dec'][cut],
-                'z': hdul[1].data[nofz_redshift_type][cut],
-                'zp': hdul[1].data['zp'][cut]
-            }
-        if sample == 'source':
-            data_cut['gamma1'] = hdul[1].data['gamma1'][cut]
-            data_cut['gamma2'] = hdul[1].data['gamma2'][cut]
-
-        weight = {'source':'she_weight',
-                  'lens':'phz_weight'}
-        data_cut[weight[sample]] = hdul[1].data[weight[sample]][cut]
-
+        df = df[(df['zp'] >= zmin) & (df['zp'] < zmax)]
 
         # define redshift edges for binning
-        wq = DescrStatsW(data=data_cut['zp'], weights=data_cut[weight[sample]])
+        weight = {'source':'she_weight',
+                  'lens':'phz_weight'}
+        wq = DescrStatsW(data=df['zp'], weights=df[weight[sample]])
         z_edges = wq.quantile(probs=np.linspace(0,1,nbins+1), return_pandas=False)
 
     # do the actual division in tomographic bins
@@ -111,94 +101,19 @@ def create_redshift_bins_complete(file_path, selected_bins, sample,
         if not (0 <= i < nbins):
             raise ValueError(f"Invalid bin index: {i}. It should be in the range [0, {nbins}).")
         print('- bin {}/{}'.format(i, nbins))
-        selection = (hdul[1].data['zp'] >= z_edges[i]) & (hdul[1].data['zp'] <= z_edges[i+1])
-        ngal_bin.append(hdul[1].data[nofz_redshift_type][selection].size)
+        selection = (df['zp'] >= z_edges[i]) & (df['zp'] <= z_edges[i+1])
+        ngal_bin.append(df[nofz_redshift_type][selection].size)
 
         tbin = {
-            'ra': hdul[1].data['ra'][selection],
-            'dec': hdul[1].data['dec'][selection],
-            'z': hdul[1].data[nofz_redshift_type][selection]
+            'ra': df['ra'][selection],
+            'dec': df['dec'][selection],
+            'z': df[nofz_redshift_type][selection]
         }
         if sample == 'source':
-            tbin['gamma1'] = hdul[1].data['gamma1'][selection]
-            tbin['gamma2'] = hdul[1].data['gamma2'][selection]
+            tbin['gamma1'] = df['gamma1'][selection]
+            tbin['gamma2'] = df['gamma2'][selection]
 
         tomo_bins.append(tbin)
-
-    hdul.close()
-
-    return tomo_bins, ngal_bin
-
-def create_redshift_bins(file_path, selected_bins, zmin=0.2, zmax=2.54, nbins=13):
-    """
-    Create redshift bins and corresponding galaxy catalogs from a FITS file for a specified set of bins.
-
-    Parameters
-    ----------
-    file_path : str
-        Path to the FITS file containing galaxy data.
-    selected_bins : list
-        List of indices specifying the redshift bins to consider.
-    zmin : float, optional
-        Minimum redshift for the bins (default is 0.2).
-    zmax : float, optional
-        Maximum redshift for the bins (default is 2.54).
-    nbins : int, optional
-        Number of redshift bins (default is 13).
-
-    Returns
-    -------
-    tomo_bins : list
-        List of dictionaries containing galaxy catalog information for each selected redshift bin.
-    ngal_bin : list
-        Number of galaxies in each selected redshift bin.
-
-    Examples
-    --------
-    >>> file_path = 'galaxy_data.fits'
-    >>> selected_bins = [0, 1, 2]
-    >>> create_redshift_bins(file_path, selected_bins)
-    ([{'gamma1': array([...]),
-       'gamma2': array([...]),
-       'ra': array([...]),
-       'dec': array([...]),
-       'z': array([...])},
-      {'gamma1': array([...]),
-       'gamma2': array([...]),
-       'ra': array([...]),
-       'dec': array([...]),
-       'z': array([...])},
-      {'gamma1': array([...]),
-       'gamma2': array([...]),
-       'ra': array([...]),
-       'dec': array([...]),
-       'z': array([...])}], [100, 150, 200])
-    """
-
-    hdul = fits.open(file_path)
-
-    z_edges = np.linspace(zmin, zmax, nbins + 1)
-
-    tomo_bins = []
-    ngal_bin = []
-    print('Dividing the sample in equi-distant tomographic bins')
-    for i in selected_bins:
-        if not (0 <= i < nbins):
-            raise ValueError(f"Invalid bin index: {i}. It should be in the range [0, {nbins}).")
-        print('- bin {}/{}'.format(i, nbins))
-        selection = (hdul[1].data['zp'] >= z_edges[i]) & (hdul[1].data['zp'] <= z_edges[i+1])
-        ngal_bin.append(hdul[1].data['observed_redshift_gal'][selection].size)
-
-        tbin = {
-            'gamma1': hdul[1].data['gamma1'][selection],
-            'gamma2': hdul[1].data['gamma2'][selection],
-            'ra': hdul[1].data['ra_gal'][selection],
-            'dec': hdul[1].data['dec_gal'][selection],
-            'z': hdul[1].data['observed_redshift_gal'][selection]
-        }
-        tomo_bins.append(tbin)
-
-    hdul.close()
 
     return tomo_bins, ngal_bin
 
@@ -348,9 +263,6 @@ def density_map(tbin, nside, mask):
 
     #- get sky fraction
     fsky = np.mean(mask)
-
-    #- compute shot-noise
-    shotnoise = shot_noise(tbin, fsky)
 
     #- compute nbar from all the pixels inside the mask and compute delta
     nbar = ngal / npix / fsky
@@ -587,9 +499,12 @@ def shot_noise(tbin, fsky):
     return (4 * np.pi * fsky**2) / ngal
 
 def compute_noise(tracer, tbin, fsky):
-    dic = {'D' : shot_noise(tbin, fsky),
-           'G' : shape_noise(tbin, fsky)}
-    return dic[tracer]
+    if tracer == 'D':
+        noise = shot_noise(tbin, fsky)
+    if tracer == 'G':
+        noise = shape_noise(tbin, fsky)
+
+    return noise
 
 def decouple_noise(noise, wsp, nside, depixelate):
     """
@@ -750,14 +665,16 @@ def save_twopoint(cls_dic, bnmt, nofz_dic, ngal_dic, zbins, probes, cross, outna
     >>> save_twopoint(cls_dic, bnmt, nofz, ngal, zbins, probes, cross, outname)
     """
     # format n(z)
-    z_mid  = nofz_dic['lens'][0]
-    z_high = z_mid + np.diff(z_mid)[0]
-    z_low  = z_mid - np.diff(z_mid)[0]
-
     if 'GGL' or 'WL' in probes:
+        z_mid  = nofz_dic['source'][0]
+        z_high = z_mid + np.diff(z_mid)[0]
+        z_low  = z_mid - np.diff(z_mid)[0]
         nz_source = twopoint.NumberDensity('nz_source', zlow=z_low, z=z_mid, zhigh=z_high,
                                            nzs=nofz_dic['source'][1:], ngal=ngal_dic['source'])
     if 'GGL' or 'GC' in probes:
+        z_mid  = nofz_dic['lens'][0]
+        z_high = z_mid + np.diff(z_mid)[0]
+        z_low  = z_mid - np.diff(z_mid)[0]
         nz_lens = twopoint.NumberDensity('nz_lens', zlow=z_low, z=z_mid, zhigh=z_high,
                                          nzs=nofz_dic['lens'][1:], ngal=ngal_dic['lens'])
 
