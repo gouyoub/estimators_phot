@@ -22,6 +22,7 @@ Dependencies:
 
 """
 
+import os
 import time
 import itertools as it
 
@@ -901,66 +902,60 @@ def get_iter_nokeymap(probe, cross, zbins):
 
 #---- Covariance ----#
 
-def errs_from_cov(cov, probe, nzbins, cross):
+def coupling_matrix(bin_scheme, mask, wkspce_name):
     """
-    Compute errors from the covariance matrix.
+    Compute the mixing matrix for coupling spherical harmonic modes using
+    the provided binning scheme and mask.
 
-    Parameters
-    ----------
-    cov : array-like
-        Covariance matrix.
-    probe : str
-        Probe type ('GC', 'WL', or 'GGL').
-    nzbins : int
-        Number of redshift bins.
-    cross : bool
-        Flag indicating whether to compute cross-correlations.
+    Parameters:
+    -----------
+    bin_scheme : nmt_bins
+        A binning scheme object defining the bins for the coupling matrix.
 
-    Returns
-    -------
-    err_dic : dict
-        Dictionary containing error arrays for each bin pair.
+    mask : nmt_field
+        A mask object defining the regions of the sky to include in the computation.
 
-    Notes
-    -----
-    - If `probe` is 'GGL', the covariance matrix is assumed to be asymmetric.
-    - The number of pairs (`npairs`) is determined based on the probe type and cross-correlation flag.
-    - The function iterates over pairs of redshift bins and reshapes the error array accordingly.
-    - The errors are stored in a dictionary with keys representing the bin pair labels.
+    wkspce_name : str
+        The file name for storing or retrieving the computed workspace containing
+        the coupling matrix.
 
-    Examples
+    Returns:
     --------
-    >>> cov = np.random.rand(100, 100)  # Example covariance matrix
-    >>> probe = 'GC'
-    >>> nzbins = 5
-    >>> cross = True
-    >>> errs_from_cov(cov, probe, nzbins, cross)
-    {'0-0': array([...]), '0-1': array([...]), ...}
+    nmt_workspace
+        A workspace object containing the computed coupling matrix.
+
+    Notes:
+    ------
+    This function computes the coupling matrix necessary for the pseudo-Cl power
+    spectrum estimation using the NmtField and NmtWorkspace objects from the
+    Namaster library.
+
+    If the workspace file specified by 'wkspce_name' exists, the function reads
+    the coupling matrix from the file. Otherwise, it computes the matrix and
+    writes it to the file.
+
+    Example:
+    --------
+    # Generate a linear binning scheme for an NSIDE of 64, starting from l=10, with bin width of 20
+    bin_scheme = linear_lmin_binning(NSIDE=64, lmin=10, bw=20)
+
+    # Define the mask
+    mask = nmt.NmtField(mask, [mask])
+
+    # Compute the coupling matrix and store it in 'coupling_matrix.bin'
+    coupling_matrix = coupling_matrix(bin_scheme, mask, 'coupling_matrix.bin')
     """
-    symmetric = True
-    if probe == 'GGL':
-        symmetric = False
-
-    if not cross:
-        npairs = nzbins
-    elif symmetric and cross:
-        npairs = int((nzbins * (nzbins - 1) / 2 + nzbins))
-    elif not symmetric and cross:
-        npairs = int(nzbins * nzbins)
-
-    cross_list = []
-    if cross:
-        cross_list = [probe]
-
-    iterator = get_iter(probe, cross_list, np.arange(nzbins))
-
-    nell = int(np.sqrt(cov.size) / npairs)
-    err_2d = np.reshape(np.sqrt(np.diag(cov)), (npairs, nell))
-    err_dic = {}
-    idx = 0
-    for (i, j) in iterator:
-        err_dic['{}-{}'.format(i, j)] = err_2d[idx]
-        idx += 1
-    return err_dic
-
+    print('Compute the mixing matrix')
+    start = time.time()
+    fmask = nmt.NmtField(mask, [mask]) # nmt field with only the mask
+    w = nmt.NmtWorkspace()
+    if os.path.isfile(wkspce_name):
+        print('Mixing matrix has already been calculated and is in the workspace file : ', wkspce_name, '. Read it.')
+        w.read_from(wkspce_name)
+    else :
+        print('The file : ', wkspce_name, ' does not exists. Calculating the mixing matrix and writing it.')
+        w.compute_coupling_matrix(fmask, fmask, bin_scheme)
+        w.write_to(wkspce_name)
+    print('Done computing the mixing matrix. It took ', time.time()-start, 's.')
+    return w
 

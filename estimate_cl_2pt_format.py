@@ -111,14 +111,20 @@ for map, k in zip(compute_map, key_map):
         noise_dic['{}{}'.format(k,izb)] = al.compute_noise(k, tomo_bins[i], fsky)
 
 #-- Define nmt multipole binning
-bnmt = al.edges_binning(nside, ell_binning['lmin'], ell_binning['binwidth'])
+if ell_binning['ell_binning'] == 'lin':
+    bnmt = al.edges_binning(nside, ell_binning['lmin'], ell_binning['binwidth'])
+
+elif ell_binning['ell_binning'] == 'log':
+    bnmt = al.edges_log_binning(nside, ell_binning['lmin'], ell_binning['nell'])
+
+
 
 #-- Define nmt workspace only with the mask
 w = nmt.NmtWorkspace()
 fmask = nmt.NmtField(mask, [mask]) # nmt field with only the mask
 start = time.time()
 w.compute_coupling_matrix(fmask, fmask, bnmt) # compute the mixing matrix (which only depends on the mask) just once
-w_fname = '{}_NmtWorkspace_NS{}_LMIN{}_BW{}.fits'.format(in_out['output_name'], nside, ell_binning['lmin'], ell_binning['binwidth'])
+w_fname = '{}_NmtWorkspace_NS{}_LBIN{}.fits'.format(in_out['output_name'], nside, ell_binning['ell_binning'])
 w.write_to(w_fname)
 print('\n',time.time()-start,'s to compute the coupling matrix')
 
@@ -139,10 +145,9 @@ for probe in probe_selection['probes']:
 
 cls_dic['ell'] = bnmt.get_effective_ells()
 
-outname = '{}_Cls_NS{}_LMIN{}_BW{}'.format(in_out['output_name'],
+outname = '{}_Cls_NS{}_LBIN{}'.format(in_out['output_name'],
                                                     nside,
-                                                    ell_binning['lmin'],
-                                                    ell_binning['binwidth'])
+                                                    ell_binning['ell_binning'])
 
 print('\n Saving to {} format'.format(in_out['output_format']))
 if in_out['output_format'] == 'numpy':
