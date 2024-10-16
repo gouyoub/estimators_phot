@@ -1,0 +1,1 @@
+slurmstepd-hidra9: error: *** JOB 808720 ON hidra9 CANCELLED AT 2024-09-09T15:02:07 ***
