@@ -76,7 +76,7 @@ nofz_name_ref, nofz_name_ext = z_binning['nofz_name'].split('.')
 ngal_name_ref, ngal_name_ext = z_binning['ngal_name'].split('.')
 nofz_dic = {}
 ngal_dic = {}
-print('\n Saving the n(z) and galaxy number density')
+print('\nSaving the n(z) and galaxy number density')
 if 'GC' or 'GGL' in probe_selection['probes']:
     nofz_lens = al.build_nz(tomo_bins_lens)
     np.savetxt(nofz_name_ref+'_lens.'+nofz_name_ext, nofz_lens.T)
@@ -99,6 +99,7 @@ if z_binning['only_nofz']:
 #-- Estimate maps
 maps_dic = {}
 noise_dic = {}
+print('\nComputing maps')
 compute_map, key_map = al.get_map_for_probes(probe_selection['probes'])
 for map, k in zip(compute_map, key_map):
     for i, izb in enumerate(z_binning['selected_bins']):
@@ -117,14 +118,20 @@ if ell_binning['ell_binning'] == 'lin':
 elif ell_binning['ell_binning'] == 'log':
     bnmt = al.edges_log_binning(nside, ell_binning['lmin'], ell_binning['nell'])
 
-
-
 #-- Define nmt workspace only with the mask
+print('\nGetting the mask and computing the mixing matrix ')
 w = nmt.NmtWorkspace()
-fmask = nmt.NmtField(mask, [mask]) # nmt field with only the mask
+fmask = nmt.NmtField(mask, [mask], lmax=bnmt.lmax) # nmt field with only the mask
 start = time.time()
 w.compute_coupling_matrix(fmask, fmask, bnmt) # compute the mixing matrix (which only depends on the mask) just once
-w_fname = '{}_NmtWorkspace_NS{}_LBIN{}.fits'.format(in_out['output_name'], nside, ell_binning['ell_binning'])
+w_fname = '{}_NmtWorkspace_NS{}_LBIN{}'.format(in_out['output_name'], nside, ell_binning['ell_binning'])
+if ell_binning['ell_binning'] == 'lin':
+    w_fname += '_LMIN{}_BW{}'.format(ell_binning['lmin'],
+                                     ell_binning['binwidth'])
+elif ell_binning['ell_binning'] == 'log':
+    w_fname = '_LMIN{}_NELL{}'.format(ell_binning['lmin'],
+                                      ell_binning['nell'])
+w_fname += '.fits'
 w.write_to(w_fname)
 print('\n',time.time()-start,'s to compute the coupling matrix')
 
@@ -135,8 +142,8 @@ for probe in probe_selection['probes']:
     print('\nFor probe {}'.format(probe))
     for pa, pb in al.get_iter(probe, probe_selection['cross'], z_binning['selected_bins']):
         print('Combination is {}-{}'.format(pa,pb))
-        fld_a = al.map2fld(maps_dic[pa], mask)
-        fld_b = al.map2fld(maps_dic[pb], mask)
+        fld_a = al.map2fld(maps_dic[pa], mask, bnmt.lmax)
+        fld_b = al.map2fld(maps_dic[pb], mask, bnmt.lmax)
         cl = al.compute_master(fld_a, fld_b, w, nside, pixels['depixelate'])
         if pa == pb:
             cl = al.debias(cl, noise_dic[pa], w, nside, noise['debias'], pixels['depixelate'])
@@ -146,8 +153,16 @@ for probe in probe_selection['probes']:
 cls_dic['ell'] = bnmt.get_effective_ells()
 
 outname = '{}_Cls_NS{}_LBIN{}'.format(in_out['output_name'],
-                                                    nside,
-                                                    ell_binning['ell_binning'])
+                                      nside,
+                                      ell_binning['ell_binning'])
+
+if ell_binning['ell_binning'] == 'lin':
+    outname += '_LMIN{}_BW{}'.format(ell_binning['lmin'],
+                                     ell_binning['binwidth'])
+
+elif ell_binning['ell_binning'] == 'log':
+    outname = '_LMIN{}_NELL{}'.format(ell_binning['lmin'],
+                                      ell_binning['nell'])
 
 print('\n Saving to {} format'.format(in_out['output_format']))
 if in_out['output_format'] == 'numpy':

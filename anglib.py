@@ -271,7 +271,7 @@ def density_map(tbin, nside, mask):
 
     return [hpmap]
 
-def map2fld(hpmap, mask):
+def map2fld(hpmap, mask, lmax_bin):
     """
     Convert Healpix maps to NaMaster fields.
 
@@ -305,9 +305,9 @@ def map2fld(hpmap, mask):
     """
 
     if len(hpmap) == 2:
-        fld = nmt.NmtField(mask, [-hpmap[0], hpmap[1]])
+        fld = nmt.NmtField(mask, [-hpmap[0], hpmap[1]], lmax=lmax_bin)
     else:
-        fld = nmt.NmtField(mask, [hpmap[0]])
+        fld = nmt.NmtField(mask, [hpmap[0]], lmax=lmax_bin)
 
     return fld
 
@@ -381,7 +381,10 @@ def compute_master(f_a, f_b, wsp, nside, depixelate):
     array([...])
     """
 
-    cl_coupled = nmt.compute_coupled_cell(f_a, f_b)/pixwin(nside, depixelate)
+    cl_coupled = nmt.compute_coupled_cell(f_a, f_b)
+    i_lmax = cl_coupled.shape[1]
+    cl_coupled /= pixwin(nside, depixelate)[:i_lmax]
+
     cl_decoupled = wsp.decouple_cell([cl_coupled[0]])
 
     return cl_decoupled[0]
@@ -620,7 +623,7 @@ def pixwin(nside, depixelate):
     >>> pixwin(nside, depixelate)
     array([...])
     """
-    pix_dic = {True: hp.sphtfunc.pixwin(nside) ** 2, False: 1}
+    pix_dic = {True: hp.sphtfunc.pixwin(nside) ** 2, False: np.ones(3 * nside)}
     return pix_dic[depixelate]
 
 #---- Saving ----#
@@ -947,7 +950,7 @@ def coupling_matrix(bin_scheme, mask, wkspce_name):
     """
     print('Compute the mixing matrix')
     start = time.time()
-    fmask = nmt.NmtField(mask, [mask]) # nmt field with only the mask
+    fmask = nmt.NmtField(mask, [mask], lmax=bin_scheme.lmax) # nmt field with only the mask
     w = nmt.NmtWorkspace()
     if os.path.isfile(wkspce_name):
         print('Mixing matrix has already been calculated and is in the workspace file : ', wkspce_name, '. Read it.')
