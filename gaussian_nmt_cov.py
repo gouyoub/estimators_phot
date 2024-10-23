@@ -1,6 +1,7 @@
 import numpy as np
 import pymaster as nmt
 import healpy as hp
+import cov_utils as cu
 
 import loading
 
@@ -130,3 +131,5 @@ covmat = covmat + covmat.T - np.diag(covmat.diagonal())
 print('constructing the matrix took ', time.time() - start, 's', flush=True)
 # -- Save the covariance matrix
 np.save(output_name, covmat)
+
+cu.pos_def(covmat, 'This covariance matrix')

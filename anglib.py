@@ -101,7 +101,7 @@ def create_redshift_bins_complete(file_path, selected_bins, sample,
     for i in selected_bins:
         if not (0 <= i < nbins):
             raise ValueError(f"Invalid bin index: {i}. It should be in the range [0, {nbins}).")
-        print('- bin {}/{}'.format(i, nbins))
+        print('- bin {}/{}'.format(i+1, nbins))
         selection = (df['zp'] >= z_edges[i]) & (df['zp'] <= z_edges[i+1])
         ngal_bin.append(df[nofz_redshift_type][selection].size)
 
@@ -837,8 +837,8 @@ def get_iter(probe, cross, zbins):
     >>> get_iter(probe, cross, zbins)
     <itertools.combinations_with_replacement object at ...>
     """
-    keymap = {'GC': ['D{}'.format(i) for i in zbins],
-              'WL': ['G{}'.format(i) for i in zbins],
+    keymap = {'GC': ['D{}'.format(i+1) for i in zbins],
+              'WL': ['G{}'.format(i+1) for i in zbins],
               'GGL': []}
 
     cross_selec = {
@@ -886,8 +886,8 @@ def get_iter_nokeymap(probe, cross, zbins):
     >>> get_iter(probe, cross, zbins)
     <itertools.combinations_with_replacement object at ...>
     """
-    keymap = {'GC': ['{}'.format(i) for i in zbins],
-              'WL': ['{}'.format(i) for i in zbins],
+    keymap = {'GC': ['{}'.format(i+1) for i in zbins],
+              'WL': ['{}'.format(i+1) for i in zbins],
               'GGL': []}
 
     cross_selec = {

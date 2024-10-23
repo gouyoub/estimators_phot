@@ -108,8 +108,8 @@ for map, k in zip(compute_map, key_map):
             tomo_bins = tomo_bins_lens
         if k == 'G' :
             tomo_bins = tomo_bins_source
-        maps_dic['{}{}'.format(k,izb)] = map(tomo_bins[i], nside, mask)
-        noise_dic['{}{}'.format(k,izb)] = al.compute_noise(k, tomo_bins[i], fsky)
+        maps_dic['{}{}'.format(k,izb+1)] = map(tomo_bins[i], nside, mask)
+        noise_dic['{}{}'.format(k,izb+1)] = al.compute_noise(k, tomo_bins[i], fsky)
 
 #-- Define nmt multipole binning
 if ell_binning['ell_binning'] == 'lin':
