@@ -669,22 +669,23 @@ def save_twopoint(cls_dic, bnmt, nofz_dic, ngal_dic, zbins, probes, cross, outna
     >>> save_twopoint(cls_dic, bnmt, nofz, ngal, zbins, probes, cross, outname)
     """
     # format n(z)
-    if 'GGL' or 'WL' in probes:
+    kernels = []
+    if 'GGL' in probes or 'WL' in probes:
         z_mid  = nofz_dic['source'][0]
         z_high = z_mid + np.diff(z_mid)[0]
         z_low  = z_mid - np.diff(z_mid)[0]
         nz_source = twopoint.NumberDensity('nz_source', zlow=z_low, z=z_mid, zhigh=z_high,
                                            nzs=nofz_dic['source'][1:], ngal=ngal_dic['source'])
-    if 'GGL' or 'GC' in probes:
+        kernels.append(nz_source)
+
+    if 'GGL' in probes or 'GC' in probes:
         z_mid  = nofz_dic['lens'][0]
         z_high = z_mid + np.diff(z_mid)[0]
         z_low  = z_mid - np.diff(z_mid)[0]
         nz_lens = twopoint.NumberDensity('nz_lens', zlow=z_low, z=z_mid, zhigh=z_high,
                                          nzs=nofz_dic['lens'][1:], ngal=ngal_dic['lens'])
+        kernels.append(nz_lens)
 
-    kernels = []
-    kernels.append(nz_lens)
-    kernels.append(nz_source)
 
     # format spectra
     spectra = []

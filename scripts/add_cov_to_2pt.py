@@ -4,11 +4,11 @@ from astropy.io import fits
 
 fsky = 0.125
 
-twopoint_file = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/measurement/FS2_GCauto_firstchain_NmtCov_Cls_NS2048_LBINlin_LMIN10_BW50.fits'
+twopoint_file = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/measurement/FS2_3x2_firstchain_Cls_NS1024_LBINlin_LMIN10_BW50.fits'
 data = twopoint.TwoPointFile.from_fits(twopoint_file, covmat_name=None)
 # data = twopoint.TwoPointFile.from_fits(twopoint_file)
 
-cov_file = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/covariance/FS2_GCauto_firstchain_6ED_NS2048_LBINlin_LMIN10_BW50.npy'
+cov_file = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/covariance/FS2_3x2_firstchain_partialsky_6ED_NS1024_LMIN10_BW50.npy'
 cov = np.load(cov_file)
 # hdul = fits.open('/home/hidra2/gouyou/cosmosis-standard-library/working_dir/output/fs2_nlbias/simulation/SDV_3x2_fs2_6ED_linbias_covmat2/SDV_3x2_fs2_6ED_linbias_covmat2.fits')
 # cov = hdul['COVMAT'].data
