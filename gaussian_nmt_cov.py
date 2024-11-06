@@ -80,7 +80,6 @@ nell = workspace.get_bandpower_windows().shape[1]
 print('Get workspace took ', time.time()-start, 's', flush=True)
 
 # Check shape of Cl's for given workspace
-
 assert Cl[keys[0]].size >= workspace.wsp.lmax_mask+1, 'Cls have wrong lenght. It should be at least lmax*3+1'
 
 # -- Add noise term

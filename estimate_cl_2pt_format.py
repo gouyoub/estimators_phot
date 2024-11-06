@@ -9,7 +9,6 @@ format.
 
 import numpy as np
 import healpy as hp
-from astropy.io import fits
 from collections import OrderedDict
 
 import pymaster as nmt
@@ -39,12 +38,17 @@ probe_selection = load_it(config._sections['probe_selection'])
 ell_binning     = load_it(config._sections['ell_binning'])
 z_binning       = load_it(config._sections['z_binning'])
 noise           = load_it(config._sections['noise'])
+apodization     = load_it(config._sections['apodization'])
 nside           = pixels['nside']
 nz              = len(z_binning['selected_bins'])
 
 #-- Get the mask
 mask = hp.read_map(in_out['mask'])
 fsky = np.mean(mask)
+if apodization['apodize']:
+    print('\nApodizing the mask')
+    mask = nmt.mask_apodization(mask, apodization['aposcale'],
+                                apotype=apodization['apotype'])
 
 #-- Redshift binning
 if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
@@ -127,11 +131,12 @@ fmask = nmt.NmtField(mask, [mask], lmax=bnmt.lmax) # nmt field with only the mas
 start = time.time()
 w.compute_coupling_matrix(fmask, fmask, bnmt) # compute the mixing matrix (which only depends on the mask) just once
 w_fname = '{}_NmtWorkspace_NS{}_LBIN{}'.format(in_out['output_name'], nside, ell_binning['ell_binning'])
+print('w_fname : ', w_fname)
 if ell_binning['ell_binning'] == 'lin':
     w_fname += '_LMIN{}_BW{}'.format(ell_binning['lmin'],
                                      ell_binning['binwidth'])
 elif ell_binning['ell_binning'] == 'log':
-    w_fname = '_LMIN{}_NELL{}'.format(ell_binning['lmin'],
+    w_fname += '_LMIN{}_NELL{}'.format(ell_binning['lmin'],
                                       ell_binning['nell'])
 w_fname += '.fits'
 w.write_to(w_fname)
@@ -163,7 +168,7 @@ if ell_binning['ell_binning'] == 'lin':
                                      ell_binning['binwidth'])
 
 elif ell_binning['ell_binning'] == 'log':
-    outname = '_LMIN{}_NELL{}'.format(ell_binning['lmin'],
+    outname += '_LMIN{}_NELL{}'.format(ell_binning['lmin'],
                                       ell_binning['nell'])
 
 print('\n Saving to {} format'.format(in_out['output_format']))
