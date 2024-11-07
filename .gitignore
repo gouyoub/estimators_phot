@@ -2,6 +2,7 @@ __pycache__/
 test_plot.ipynb
 test_posdef_cov.ipynb
 positive_definite_covmat.ipynb
+*.ipynb
 .vscode/
 output/*
 *.npy

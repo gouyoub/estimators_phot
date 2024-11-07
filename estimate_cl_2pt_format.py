@@ -117,6 +117,11 @@ for map, k in zip(compute_map, key_map):
         maps_dic['{}{}'.format(k,izb+1)] = map(tomo_bins[i], nside, mask)
         noise_dic['{}{}'.format(k,izb+1)] = al.compute_noise(k, tomo_bins[i], fsky)
 
+if pixels['save_maps']:
+    map_name = '{}_maps_NS{}'.format(in_out['output_name'],
+                                      nside)
+    np.save(map_name+'.npy', maps_dic)
+
 #-- Define nmt multipole binning
 if ell_binning['ell_binning'] == 'lin':
     bnmt = al.edges_binning(nside, ell_binning['lmin'], ell_binning['binwidth'])
