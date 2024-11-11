@@ -75,8 +75,6 @@ if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
                                                 z_binning['nztot'])
     ngal_arcmin_source = (ngal_bins_source/(4*np.pi*fsky**2))/(((180/np.pi)**2)*3600)
 
-
-
 #-- Build n(z)
 nofz_name_ref, nofz_name_ext = z_binning['nofz_name'].split('.')
 ngal_name_ref, ngal_name_ext = z_binning['ngal_name'].split('.')
@@ -129,6 +127,9 @@ if ell_binning['ell_binning'] == 'lin':
 elif ell_binning['ell_binning'] == 'log':
     bnmt = al.edges_log_binning(nside, ell_binning['lmin'], ell_binning['nell'])
 
+elif ell_binning['ell_binning'] == 'log_her':
+    bnmt = al.log_binning_ala_hercacles(nside, ell_binning['lmin'], ell_binning['nell'])
+
 #-- Define nmt workspace only with the mask
 print('\nGetting the mask and computing the mixing matrix ')
 w = nmt.NmtWorkspace()
@@ -140,7 +141,7 @@ print('w_fname : ', w_fname)
 if ell_binning['ell_binning'] == 'lin':
     w_fname += '_LMIN{}_BW{}'.format(ell_binning['lmin'],
                                      ell_binning['binwidth'])
-elif ell_binning['ell_binning'] == 'log':
+elif ell_binning['ell_binning'] == 'log' or ell_binning['ell_binning'] == 'log_her':
     w_fname += '_LMIN{}_NELL{}'.format(ell_binning['lmin'],
                                       ell_binning['nell'])
 w_fname += '.fits'
@@ -159,7 +160,6 @@ for probe in probe_selection['probes']:
         cl = al.compute_master(fld_a, fld_b, w, nside, pixels['depixelate'])
         if pa == pb:
             cl = al.debias(cl, noise_dic[pa], w, nside, noise['debias'], pixels['depixelate'])
-
         cls_dic['{}-{}'.format(pa,pb)] = cl
 
 cls_dic['ell'] = bnmt.get_effective_ells()
@@ -172,7 +172,7 @@ if ell_binning['ell_binning'] == 'lin':
     outname += '_LMIN{}_BW{}'.format(ell_binning['lmin'],
                                      ell_binning['binwidth'])
 
-elif ell_binning['ell_binning'] == 'log':
+elif ell_binning['ell_binning'] == 'log' or ell_binning['ell_binning'] == 'log_her':
     outname += '_LMIN{}_NELL{}'.format(ell_binning['lmin'],
                                       ell_binning['nell'])
 

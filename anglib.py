@@ -435,6 +435,18 @@ def edges_log_binning(NSIDE, lmin, nbl):
     b = nmt.NmtBin.from_edges(bin_edges[:-1], bin_edges[1:])
     return b
 
+def log_binning_ala_hercacles(NSIDE, lmin, nbl):
+    lmax = 2*NSIDE+1
+    op = np.log10
+    inv = lambda x: 10**x
+
+    bins = inv(np.linspace(op(lmin), op(lmax + 1), nbl + 1))
+    ell = np.arange(lmin, lmax+1)
+    i = np.digitize(ell, bins)-1
+    w = np.ones(ell.size)
+    b = nmt.NmtBin(bpws=i, ells=ell, weights=w, lmax=lmax)
+    return b
+
 #---- Noise and pixels ----#
 
 def shape_noise(tbin, fsky):
