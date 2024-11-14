@@ -175,10 +175,12 @@ for probe in probe_selection['probes']:
 
         # Remove noise bias from auto correlation if wanted
         if pa == pb:
-            cl = al.debias(cl, noise_dic[pa], w, nside,
-                           noise['debias'], pixels['depixelate'],
-                           spectra['decoupling'], w_fullsky)
+            cl = al.debias(cl, noise_dic[pa], w, nside, noise['debias'],
+                           pixels['depixelate'], spectra['decoupling'],
+                           w_fullsky, fsky)
+
         cls_dic['{}-{}'.format(pa,pb)] = cl
+
 cls_dic['ell'] = bnmt.get_effective_ells()
 
 outname = '{}_Cls_NS{}_LBIN{}'.format(in_out['output_name'],

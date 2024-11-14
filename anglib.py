@@ -570,18 +570,19 @@ def decouple_noise(noise, wsp, nside, depixelate):
     """
     snl = np.array([np.full(3 * nside, noise)]) / pixwin(nside, depixelate)
     snl_decoupled = wsp.decouple_cell(snl)[0]
+
     return snl_decoupled
 
-def couple_noise(noise, wsp, nside, depixelate, wsp_fullsky):
+def couple_noise(noise, wsp, nside, depixelate, wsp_fullsky, fsky):
     snl = np.array([np.full(3 * nside, noise)]) / pixwin(nside, depixelate)
     snl_coupled = wsp.couple_cell(snl)
 
     # Bin the coupled noise with a fullsky workspace
-    snl_coupled = wsp_fullsky.decouple_cell(snl_coupled)[0]
+    snl_coupled = wsp_fullsky.decouple_cell(snl_coupled)[0]/fsky
 
     return snl_coupled
 
-def debias(cl, noise, w, nside, debias_bool, depixelate_bool, decouple_bool, wsp_fullsky):
+def debias(cl, noise, w, nside, debias_bool, depixelate_bool, decouple_bool, wsp_fullsky, fsky):
     """
     Debiases the angular power spectrum estimate by subtracting the decoupled noise.
 
@@ -626,7 +627,7 @@ def debias(cl, noise, w, nside, debias_bool, depixelate_bool, decouple_bool, wsp
         if decouple_bool:
             cl -= decouple_noise(noise, w, nside, depixelate_bool)
         else :
-            cl -= couple_noise(noise, w, nside, depixelate_bool, wsp_fullsky)
+            cl -= couple_noise(noise, w, nside, depixelate_bool, wsp_fullsky, fsky)
     return cl
 
 def pixwin(nside, depixelate):
