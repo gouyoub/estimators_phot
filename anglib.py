@@ -385,9 +385,21 @@ def compute_master(f_a, f_b, wsp, nside, depixelate):
     i_lmax = cl_coupled.shape[1]
     cl_coupled /= pixwin(nside, depixelate)[:i_lmax]
 
+    # decouple and bin
     cl_decoupled = wsp.decouple_cell([cl_coupled[0]])
 
     return cl_decoupled[0]
+
+def compute_coupled(f_a, f_b, wsp, nside, depixelate, wsp_fullsky):
+
+    cl_coupled = nmt.compute_coupled_cell(f_a, f_b)
+    i_lmax = cl_coupled.shape[1]
+    cl_coupled /= pixwin(nside, depixelate)[:i_lmax]
+
+    # binning with a fullsky workspace
+    cl_binned = wsp_fullsky.decouple_cell([cl_coupled[0]])
+
+    return cl_binned[0]
 
 def edges_binning(NSIDE, lmin, bw):
     """
@@ -560,7 +572,16 @@ def decouple_noise(noise, wsp, nside, depixelate):
     snl_decoupled = wsp.decouple_cell(snl)[0]
     return snl_decoupled
 
-def debias(cl, noise, w, nside, debias_bool, depixelate_bool):
+def couple_noise(noise, wsp, nside, depixelate, wsp_fullsky):
+    snl = np.array([np.full(3 * nside, noise)]) / pixwin(nside, depixelate)
+    snl_coupled = wsp.couple_cell(snl)
+
+    # Bin the coupled noise with a fullsky workspace
+    snl_coupled = wsp_fullsky.decouple_cell(snl_coupled)[0]
+
+    return snl_coupled
+
+def debias(cl, noise, w, nside, debias_bool, depixelate_bool, decouple_bool, wsp_fullsky):
     """
     Debiases the angular power spectrum estimate by subtracting the decoupled noise.
 
@@ -602,7 +623,10 @@ def debias(cl, noise, w, nside, debias_bool, depixelate_bool):
     array([0.09451773, 0.19451773, 0.29451773])
     """
     if debias_bool:
-        cl -= decouple_noise(noise, w, nside, depixelate_bool)
+        if decouple_bool:
+            cl -= decouple_noise(noise, w, nside, depixelate_bool)
+        else :
+            cl -= couple_noise(noise, w, nside, depixelate_bool, wsp_fullsky)
     return cl
 
 def pixwin(nside, depixelate):

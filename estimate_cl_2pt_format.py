@@ -39,6 +39,7 @@ ell_binning     = load_it(config._sections['ell_binning'])
 z_binning       = load_it(config._sections['z_binning'])
 noise           = load_it(config._sections['noise'])
 apodization     = load_it(config._sections['apodization'])
+spectra         = load_it(config._sections['spectra'])
 nside           = pixels['nside']
 nz              = len(z_binning['selected_bins'])
 
@@ -115,6 +116,7 @@ for map, k in zip(compute_map, key_map):
         maps_dic['{}{}'.format(k,izb+1)] = map(tomo_bins[i], nside, mask)
         noise_dic['{}{}'.format(k,izb+1)] = al.compute_noise(k, tomo_bins[i], fsky)
 
+#-- Save maps
 if pixels['save_maps']:
     map_name = '{}_maps_NS{}'.format(in_out['output_name'],
                                       nside)
@@ -148,20 +150,35 @@ w_fname += '.fits'
 w.write_to(w_fname)
 print('\n',time.time()-start,'s to compute the coupling matrix')
 
-#- Cl computation loop
-cls_dic  = OrderedDict() # To store the cl to be saved in a fit file
+#-- Compute a fullsky workspace for the no deconvolution case
+fullsky_mask = np.ones(hp.nside2npix(nside))
+w_fullsky = nmt.NmtWorkspace()
+fmask_fullsky = nmt.NmtField(fullsky_mask, [fullsky_mask], lmax=bnmt.lmax) # nmt field with only the mask
+w_fullsky.compute_coupling_matrix(fmask_fullsky, fmask_fullsky, bnmt)
 
+#-- Cl computation loop
+cls_dic  = OrderedDict() # To store the cl to be saved in a fit file
 for probe in probe_selection['probes']:
     print('\nFor probe {}'.format(probe))
     for pa, pb in al.get_iter(probe, probe_selection['cross'], z_binning['selected_bins']):
         print('Combination is {}-{}'.format(pa,pb))
+
+        # Define fields to be correlated
         fld_a = al.map2fld(maps_dic[pa], mask, bnmt.lmax)
         fld_b = al.map2fld(maps_dic[pb], mask, bnmt.lmax)
-        cl = al.compute_master(fld_a, fld_b, w, nside, pixels['depixelate'])
-        if pa == pb:
-            cl = al.debias(cl, noise_dic[pa], w, nside, noise['debias'], pixels['depixelate'])
-        cls_dic['{}-{}'.format(pa,pb)] = cl
 
+        # Compute Peudo-Cl's or bandpowers
+        if spectra['decoupling']:
+            cl = al.compute_master(fld_a, fld_b, w, nside, pixels['depixelate'])
+        else:
+            cl = al.compute_coupled(fld_a, fld_b, w, nside, pixels['depixelate'], w_fullsky)
+
+        # Remove noise bias from auto correlation if wanted
+        if pa == pb:
+            cl = al.debias(cl, noise_dic[pa], w, nside,
+                           noise['debias'], pixels['depixelate'],
+                           spectra['decoupling'], w_fullsky)
+        cls_dic['{}-{}'.format(pa,pb)] = cl
 cls_dic['ell'] = bnmt.get_effective_ells()
 
 outname = '{}_Cls_NS{}_LBIN{}'.format(in_out['output_name'],
