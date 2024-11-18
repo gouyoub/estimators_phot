@@ -35,7 +35,7 @@ import anglib as al
 import pymaster as nmt
 
 # Load mask file
-mask_fname = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/mask/fullsky_mask_binary_NS1024.fits'
+mask_fname = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/mask/flagship2_mask_binary_NS256.fits'
 mask = hp.read_map(mask_fname)
 
 # Compute NSIDE from mask
@@ -50,5 +50,13 @@ binning = al.log_binning_ala_hercacles(NSIDE=NSIDE, lmin=10, nbl=32)
 print(binning.get_effective_ells())
 
 # Compute coupling matrix and save to file
-w_fname = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/nmt_workspace/fullsky_NS1024_LBINlog_her_LMIN10_NELL32.fits'
-w = al.coupling_matrix(binning, mask, w_fname)
+w_fname = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/nmt_workspace/fullsky_NS1024_LBINlog_her_LMIN10_NELL32_galaxy_cl.fits'
+w = al.coupling_matrix(binning, mask, w_fname, 0, 0)
+
+# Compute coupling matrix and save to file
+w_fname = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/nmt_workspace/fullsky_NS1024_LBINlog_her_LMIN10_NELL32_galaxy_shear_cl.fits'
+w = al.coupling_matrix(binning, mask, w_fname, 0, 2)
+
+# Compute coupling matrix and save to file
+w_fname = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/nmt_workspace/fullsky_NS1024_LBINlog_her_LMIN10_NELL32_shear_cl.fits'
+w = al.coupling_matrix(binning, mask, w_fname, 2, 2)

@@ -390,14 +390,14 @@ def compute_master(f_a, f_b, wsp, nside, depixelate):
 
     return cl_decoupled[0]
 
-def compute_coupled(f_a, f_b, wsp, nside, depixelate, wsp_fullsky):
+def compute_coupled(f_a, f_b, nside, depixelate, bnmt):
 
     cl_coupled = nmt.compute_coupled_cell(f_a, f_b)
     i_lmax = cl_coupled.shape[1]
     cl_coupled /= pixwin(nside, depixelate)[:i_lmax]
 
-    # binning with a fullsky workspace
-    cl_binned = wsp_fullsky.decouple_cell([cl_coupled[0]])
+    # binning
+    cl_binned = bnmt.bin_cell([cl_coupled[0]])
 
     return cl_binned[0]
 
@@ -447,15 +447,15 @@ def edges_log_binning(NSIDE, lmin, nbl):
     b = nmt.NmtBin.from_edges(bin_edges[:-1], bin_edges[1:])
     return b
 
-def log_binning_ala_hercacles(NSIDE, lmin, nbl):
-    lmax = 2*NSIDE+1
+def log_binning_ala_hercacles(lmax, lmin, nbl, w=None):
     op = np.log10
     inv = lambda x: 10**x
 
     bins = inv(np.linspace(op(lmin), op(lmax + 1), nbl + 1))
     ell = np.arange(lmin, lmax+1)
     i = np.digitize(ell, bins)-1
-    w = np.ones(ell.size)
+    if w is None:
+        w = np.ones(ell.size)
     b = nmt.NmtBin(bpws=i, ells=ell, weights=w, lmax=lmax)
     return b
 
@@ -573,16 +573,16 @@ def decouple_noise(noise, wsp, nside, depixelate):
 
     return snl_decoupled
 
-def couple_noise(noise, wsp, nside, depixelate, wsp_fullsky, fsky):
+def couple_noise(noise, wsp, bnmt, fsky, nside, depixelate):
     snl = np.array([np.full(3 * nside, noise)]) / pixwin(nside, depixelate)
     snl_coupled = wsp.couple_cell(snl)
 
-    # Bin the coupled noise with a fullsky workspace
-    snl_coupled = wsp_fullsky.decouple_cell(snl_coupled)[0]/fsky
+    # Bin the coupled noise
+    snl_coupled = bnmt.bin_cell(snl_coupled)[0]/fsky
 
     return snl_coupled
 
-def debias(cl, noise, w, nside, debias_bool, depixelate_bool, decouple_bool, wsp_fullsky, fsky):
+def debias(cl, noise, wsp, bnmt, fsky, nside, debias_bool, depixelate_bool, decouple_bool):
     """
     Debiases the angular power spectrum estimate by subtracting the decoupled noise.
 
@@ -625,9 +625,9 @@ def debias(cl, noise, w, nside, debias_bool, depixelate_bool, decouple_bool, wsp
     """
     if debias_bool:
         if decouple_bool:
-            cl -= decouple_noise(noise, w, nside, depixelate_bool)
+            cl -= decouple_noise(noise, wsp, nside, depixelate_bool)
         else :
-            cl -= couple_noise(noise, w, nside, depixelate_bool, wsp_fullsky, fsky)
+            cl -= couple_noise(noise, wsp, bnmt, fsky, nside, depixelate_bool)
     return cl
 
 def pixwin(nside, depixelate):
@@ -943,7 +943,7 @@ def get_iter_nokeymap(probe, cross, zbins):
 
 #---- Covariance ----#
 
-def coupling_matrix(bin_scheme, mask, wkspce_name):
+def coupling_matrix(bin_scheme, mask, wkspce_name, spin1, spin2):
     """
     Compute the mixing matrix for coupling spherical harmonic modes using
     the provided binning scheme and mask.
@@ -988,14 +988,15 @@ def coupling_matrix(bin_scheme, mask, wkspce_name):
     """
     print('Compute the mixing matrix')
     start = time.time()
-    fmask = nmt.NmtField(mask, [mask], lmax=bin_scheme.lmax) # nmt field with only the mask
+    fmask1 = nmt.NmtField(mask, None, lmax=bin_scheme.lmax, spin=spin1) # nmt field with only the mask
+    fmask2 = nmt.NmtField(mask, None, lmax=bin_scheme.lmax, spin=spin2) # nmt field with only the mask
     w = nmt.NmtWorkspace()
     if os.path.isfile(wkspce_name):
         print('Mixing matrix has already been calculated and is in the workspace file : ', wkspce_name, '. Read it.')
         w.read_from(wkspce_name)
     else :
         print('The file : ', wkspce_name, ' does not exists. Calculating the mixing matrix and writing it.')
-        w.compute_coupling_matrix(fmask, fmask, bin_scheme)
+        w.compute_coupling_matrix(fmask1, fmask2, bin_scheme)
         w.write_to(wkspce_name)
     print('Done computing the mixing matrix. It took ', time.time()-start, 's.')
     return w

@@ -150,12 +150,6 @@ w_fname += '.fits'
 w.write_to(w_fname)
 print('\n',time.time()-start,'s to compute the coupling matrix')
 
-#-- Compute a fullsky workspace for the no deconvolution case
-fullsky_mask = np.ones(hp.nside2npix(nside))
-w_fullsky = nmt.NmtWorkspace()
-fmask_fullsky = nmt.NmtField(fullsky_mask, [fullsky_mask], lmax=bnmt.lmax) # nmt field with only the mask
-w_fullsky.compute_coupling_matrix(fmask_fullsky, fmask_fullsky, bnmt)
-
 #-- Cl computation loop
 cls_dic  = OrderedDict() # To store the cl to be saved in a fit file
 for probe in probe_selection['probes']:
@@ -171,13 +165,12 @@ for probe in probe_selection['probes']:
         if spectra['decoupling']:
             cl = al.compute_master(fld_a, fld_b, w, nside, pixels['depixelate'])
         else:
-            cl = al.compute_coupled(fld_a, fld_b, w, nside, pixels['depixelate'], w_fullsky)
+            cl = al.compute_coupled(fld_a, fld_b, nside, pixels['depixelate'], bnmt)
 
         # Remove noise bias from auto correlation if wanted
         if pa == pb:
             cl = al.debias(cl, noise_dic[pa], w, nside, noise['debias'],
-                           pixels['depixelate'], spectra['decoupling'],
-                           w_fullsky, fsky)
+                           pixels['depixelate'], spectra['decoupling'], fsky, bnmt)
 
         cls_dic['{}-{}'.format(pa,pb)] = cl
 
