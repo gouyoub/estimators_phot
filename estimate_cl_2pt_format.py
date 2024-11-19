@@ -33,15 +33,30 @@ for sec in config.sections():
     print('')
 
 in_out       = load_it(config._sections['in_out'])
-pixels          = load_it(config._sections['pixels'])
+maps          = load_it(config._sections['maps'])
 probe_selection = load_it(config._sections['probe_selection'])
 ell_binning     = load_it(config._sections['ell_binning'])
 z_binning       = load_it(config._sections['z_binning'])
 noise           = load_it(config._sections['noise'])
 apodization     = load_it(config._sections['apodization'])
 spectra         = load_it(config._sections['spectra'])
-nside           = pixels['nside']
+nside           = maps['nside']
 nz              = len(z_binning['selected_bins'])
+
+
+#-- Checks
+if maps['load_maps']:
+    assert maps['save_maps'] is False, 'Maps are not saved if they are loaded'
+    assert z_binning['only_nofz'] is False, 'nofz and ngal cannot be estimated'
+    'when maps are loaded directly without loading the catalog'
+
+if os.path.isfile(in_out['output_dir']):
+    raise FileExistsError(f"This output directory already exists !")
+
+#-- Managing filenames
+print("\nCreating the output directory")
+os.mkdir(in_out['output_dir'])
+ref_out_fname = f"{in_out['output_dir']}/{in_out['output_dir'].split('/')[-1]}"
 
 #-- Get the mask
 mask = hp.read_map(in_out['mask'])
@@ -51,76 +66,83 @@ if apodization['apodize']:
     mask = nmt.mask_apodization(mask, apodization['aposcale'],
                                 apotype=apodization['apotype'])
 
-#-- Redshift binning
-if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
-    print(probe_selection['probes'])
-    tomo_bins_lens, ngal_bins_lens = al.create_redshift_bins_complete(in_out['catalog_lens'],
-                                                z_binning['selected_bins'],
-                                                'lens',
-                                                z_binning['division'],
-                                                z_binning['nofz_redshift_type'],
-                                                z_binning['zmin'],
-                                                z_binning['zmax'],
-                                                z_binning['nztot'])
-    ngal_arcmin_lens = (ngal_bins_lens/(4*np.pi*fsky**2))/(((180/np.pi)**2)*3600)
+if not maps['load_maps']:
+    #-- Redshift binning
+    if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
+        print(probe_selection['probes'])
+        tomo_bins_lens, ngal_bins_lens = al.create_redshift_bins_complete(in_out['catalog_lens'],
+                                                    z_binning['selected_bins'],
+                                                    'lens',
+                                                    z_binning['division'],
+                                                    z_binning['nofz_redshift_type'],
+                                                    z_binning['zmin'],
+                                                    z_binning['zmax'],
+                                                    z_binning['nztot'])
+        ngal_arcmin_lens = (ngal_bins_lens/(4*np.pi*fsky**2))/(((180/np.pi)**2)*3600)
 
-if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
-    print(probe_selection['probes'])
-    tomo_bins_source, ngal_bins_source = al.create_redshift_bins_complete(in_out['catalog_source'],
-                                                z_binning['selected_bins'],
-                                                'source',
-                                                z_binning['division'],
-                                                z_binning['nofz_redshift_type'],
-                                                z_binning['zmin'],
-                                                z_binning['zmax'],
-                                                z_binning['nztot'])
-    ngal_arcmin_source = (ngal_bins_source/(4*np.pi*fsky**2))/(((180/np.pi)**2)*3600)
+    if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
+        print(probe_selection['probes'])
+        tomo_bins_source, ngal_bins_source = al.create_redshift_bins_complete(in_out['catalog_source'],
+                                                    z_binning['selected_bins'],
+                                                    'source',
+                                                    z_binning['division'],
+                                                    z_binning['nofz_redshift_type'],
+                                                    z_binning['zmin'],
+                                                    z_binning['zmax'],
+                                                    z_binning['nztot'])
+        ngal_arcmin_source = (ngal_bins_source/(4*np.pi*fsky**2))/(((180/np.pi)**2)*3600)
 
-#-- Build n(z)
-nofz_name_ref, nofz_name_ext = z_binning['nofz_name'].split('.')
-ngal_name_ref, ngal_name_ext = z_binning['ngal_name'].split('.')
-nofz_dic = {}
-ngal_dic = {}
-print('\nSaving the n(z) and galaxy number density')
-if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
-    nofz_lens = al.build_nz(tomo_bins_lens)
-    np.savetxt(nofz_name_ref+'_lens.'+nofz_name_ext, nofz_lens.T)
-    np.savetxt(ngal_name_ref+'_lens.'+ngal_name_ext, ngal_arcmin_lens)
-    nofz_dic['lens'] = nofz_lens
-    ngal_dic['lens'] = ngal_arcmin_lens
+    #-- Build n(z)
+    nofz_out_fname = f"{ref_out_fname}_nofz"
+    ngal_out_fname = f"{ref_out_fname}_ngal"
+    nofz_dic = {}
+    ngal_dic = {}
+    print('\nSaving the n(z) and galaxy number density')
+    if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
+        nofz_lens = al.build_nz(tomo_bins_lens)
+        np.savetxt(nofz_out_fname+'_lens.txt', nofz_lens.T)
+        np.savetxt(ngal_out_fname+'_arcmin2_lens.txt', ngal_arcmin_lens)
+        nofz_dic['lens'] = nofz_lens
+        ngal_dic['lens'] = ngal_arcmin_lens
 
-if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
-    nofz_source = al.build_nz(tomo_bins_source)
-    np.savetxt(nofz_name_ref+'_source.'+nofz_name_ext, nofz_source.T)
-    np.savetxt(ngal_name_ref+'_source.'+ngal_name_ext, ngal_arcmin_source)
-    nofz_dic['source'] = nofz_source
-    ngal_dic['source'] = ngal_arcmin_source
+    if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
+        nofz_source = al.build_nz(tomo_bins_source)
+        np.savetxt(nofz_out_fname+'_source.txt', nofz_source.T)
+        np.savetxt(ngal_out_fname+'_arcmin2_source.txt', ngal_arcmin_source)
+        nofz_dic['source'] = nofz_source
+        ngal_dic['source'] = ngal_arcmin_source
 
-if z_binning['only_nofz']:
-    print('\nYou only asked for the n(z)')
-    print('\nDONE')
-    os._exit(0)
+    np.save(nofz_out_fname+'.npy', nofz_dic)
+    np.save(ngal_out_fname+'.npy', ngal_dic)
 
-#-- Estimate maps
-maps_dic = {}
-noise_dic = {}
-print('\nComputing maps')
-compute_map, key_map = al.get_map_for_probes(probe_selection['probes'])
-for map, k in zip(compute_map, key_map):
-    for i, izb in enumerate(z_binning['selected_bins']):
-        print('Map bin{}'.format(izb))
-        if k == 'D' :
-            tomo_bins = tomo_bins_lens
-        if k == 'G' :
-            tomo_bins = tomo_bins_source
-        maps_dic['{}{}'.format(k,izb+1)] = map(tomo_bins[i], nside, mask)
-        noise_dic['{}{}'.format(k,izb+1)] = al.compute_noise(k, tomo_bins[i], fsky)
+    #-- Estimate maps
+    maps_dic = {}
+    noise_dic = {}
+    print('\nComputing maps')
+    compute_map, key_map = al.get_map_for_probes(probe_selection['probes'])
+    for map, k in zip(compute_map, key_map):
+        for i, izb in enumerate(z_binning['selected_bins']):
+            print('Map bin{}'.format(izb))
+            if k == 'D' :
+                tomo_bins = tomo_bins_lens
+            if k == 'G' :
+                tomo_bins = tomo_bins_source
+            maps_dic['{}{}'.format(k,izb+1)] = map(tomo_bins[i], nside, mask)
+            noise_dic['{}{}'.format(k,izb+1)] = al.compute_noise(k, tomo_bins[i], fsky)
 
-#-- Save maps
-if pixels['save_maps']:
-    map_name = '{}_maps_NS{}'.format(in_out['output_name'],
-                                      nside)
-    np.save(map_name+'.npy', maps_dic)
+else :
+    maps_noise_dic = np.load(in_out['maps_noise_name'], allow_pickle=True).item()
+    maps_dic = maps_noise_dic['maps']
+    noise_dic = maps_noise_dic['noise']
+
+    nofz_dic = np.load(in_out['nofz_name']+'.npy', allow_pickle=True).item()
+    ngal_dic = np.load(in_out['ngal_name']+'.npy', allow_pickle=True).item()
+
+#-- Save maps and associated noise
+if maps['save_maps']:
+    maps_noise_out_fname = f"{ref_out_fname}_maps_noise_NS{nside}.npy"
+    maps_noise_dic = {'maps'  : maps_dic, 'noise' : noise_dic}
+    np.save(maps_noise_out_fname, maps_noise_dic)
 
 #-- Define nmt multipole binning
 if ell_binning['ell_binning'] == 'lin':
@@ -133,7 +155,7 @@ elif ell_binning['ell_binning'] == 'log':
 print('\nGetting the mask and computing the mixing matrices ')
 start = time.time()
 
-w_fname_base = f"{in_out['output_name']}_NmtWorkspace_NS{nside}_LBIN{ell_binning['ell_binning']}"
+w_fname_base = f"{ref_out_fname}_NmtWorkspace_NS{nside}_LBIN{ell_binning['ell_binning']}"
 
 if ell_binning['ell_binning'] == 'lin':
     w_fname_base += f"_LMIN{ell_binning['lmin']}_LMAX{ell_binning['lmax']}_BW{ell_binning['binwidth']}"
@@ -162,20 +184,20 @@ for probe in probe_selection['probes']:
 
         # Compute Peudo-Cl's or bandpowers
         if spectra['decoupling']:
-            cl = al.compute_master(fld_a, fld_b, w_dic[probe], nside, pixels['depixelate'])
+            cl = al.compute_master(fld_a, fld_b, w_dic[probe], nside, maps['depixelate'])
         else:
-            cl = al.compute_coupled(fld_a, fld_b, nside, pixels['depixelate'], bnmt)
+            cl = al.compute_coupled(fld_a, fld_b, nside, maps['depixelate'], bnmt)
 
         # Remove noise bias from auto correlation if wanted
         if pa == pb:
             cl = al.debias(cl, noise_dic[pa], w_dic[probe], fsky, bnmt, nside, noise['debias'],
-                           pixels['depixelate'], spectra['decoupling'])
+                           maps['depixelate'], spectra['decoupling'])
 
         cls_dic['{}-{}'.format(pa,pb)] = cl
 
 cls_dic['ell'] = bnmt.get_effective_ells()
 
-outname = '{}_Cls_NS{}_LBIN{}'.format(in_out['output_name'],
+outname = '{}_Cls_NS{}_LBIN{}'.format(ref_out_fname,
                                       nside,
                                       ell_binning['ell_binning'])
 
