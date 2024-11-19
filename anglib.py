@@ -390,7 +390,7 @@ def compute_master(f_a, f_b, wsp, nside, depixelate):
 
     return cl_decoupled[0]
 
-def compute_coupled(f_a, f_b, nside, depixelate, bnmt):
+def compute_coupled(f_a, f_b, bnmt, nside, depixelate):
 
     cl_coupled = nmt.compute_coupled_cell(f_a, f_b)
     i_lmax = cl_coupled.shape[1]

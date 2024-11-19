@@ -27,9 +27,9 @@ configname = sys.argv[1]
 config.read(configname)
 print("-----------------**  ARGUMENTS  **------------------------")
 for sec in config.sections():
-    print('[{}]'.format(sec))
+    print(f"[{sec}]")
     for it in config.items(sec):
-        print('{} : {}'.format(it[0], it[1]))
+        print(f"{it[0]} : {it[1]}")
     print('')
 
 in_out       = load_it(config._sections['in_out'])
@@ -46,9 +46,10 @@ nz              = len(z_binning['selected_bins'])
 
 #-- Checks
 if maps['load_maps']:
-    assert maps['save_maps'] is False, 'Maps are not saved if they are loaded'
-    assert z_binning['only_nofz'] is False, 'nofz and ngal cannot be estimated'
-    'when maps are loaded directly without loading the catalog'
+    assert maps['save_maps'] is False, 'Maps are not saved if they are loaded.'
+
+if ell_binning['lmax'] > 2*nside:
+    raise ValueError(f"The ell max is larger than than 2 x NSIDE !")
 
 if os.path.isfile(in_out['output_dir']):
     raise FileExistsError(f"This output directory already exists !")
@@ -65,6 +66,9 @@ if apodization['apodize']:
     print('\nApodizing the mask')
     mask = nmt.mask_apodization(mask, apodization['aposcale'],
                                 apotype=apodization['apotype'])
+# Check consistency of nside
+if nside != hp.npix2nside(mask.size):
+    raise ValueError(f"The input nside and the mask are not consistent !")
 
 if not maps['load_maps']:
     #-- Redshift binning
@@ -122,13 +126,13 @@ if not maps['load_maps']:
     compute_map, key_map = al.get_map_for_probes(probe_selection['probes'])
     for map, k in zip(compute_map, key_map):
         for i, izb in enumerate(z_binning['selected_bins']):
-            print('Map bin{}'.format(izb))
+            print(f"Map bin{izb}")
             if k == 'D' :
                 tomo_bins = tomo_bins_lens
             if k == 'G' :
                 tomo_bins = tomo_bins_source
-            maps_dic['{}{}'.format(k,izb+1)] = map(tomo_bins[i], nside, mask)
-            noise_dic['{}{}'.format(k,izb+1)] = al.compute_noise(k, tomo_bins[i], fsky)
+            maps_dic[f"{k}{izb+1}"] = map(tomo_bins[i], nside, mask)
+            noise_dic[f"{k}{izb+1}"] = al.compute_noise(k, tomo_bins[i], fsky)
 
 else :
     maps_noise_dic = np.load(in_out['maps_noise_name'], allow_pickle=True).item()
@@ -174,9 +178,9 @@ print('\n',time.time()-start,'s to compute the coupling matrices')
 #-- Cl computation loop
 cls_dic  = OrderedDict() # To store the cl to be saved in a fit file
 for probe in probe_selection['probes']:
-    print('\nFor probe {}'.format(probe))
+    print(f"\nFor probe {probe}")
     for pa, pb in al.get_iter(probe, probe_selection['cross'], z_binning['selected_bins']):
-        print('Combination is {}-{}'.format(pa,pb))
+        print(f"Combination is {pa}-{pb}")
 
         # Define fields to be correlated
         fld_a = al.map2fld(maps_dic[pa], mask, bnmt.lmax)
@@ -186,30 +190,27 @@ for probe in probe_selection['probes']:
         if spectra['decoupling']:
             cl = al.compute_master(fld_a, fld_b, w_dic[probe], nside, maps['depixelate'])
         else:
-            cl = al.compute_coupled(fld_a, fld_b, nside, maps['depixelate'], bnmt)
+            cl = al.compute_coupled(fld_a, fld_b, bnmt, nside, maps['depixelate'])
 
         # Remove noise bias from auto correlation if wanted
         if pa == pb:
             cl = al.debias(cl, noise_dic[pa], w_dic[probe], fsky, bnmt, nside, noise['debias'],
                            maps['depixelate'], spectra['decoupling'])
 
-        cls_dic['{}-{}'.format(pa,pb)] = cl
+        cls_dic[f"{pa}-{pb}"] = cl
 
 cls_dic['ell'] = bnmt.get_effective_ells()
 
-outname = '{}_Cls_NS{}_LBIN{}'.format(ref_out_fname,
-                                      nside,
-                                      ell_binning['ell_binning'])
+#-- Saving Cl's
+outname = f"{ref_out_fname}_Cls_NS{nside}_LBIN{ell_binning}"
 
 if ell_binning['ell_binning'] == 'lin':
-    outname += '_LMIN{}_BW{}'.format(ell_binning['lmin'],
-                                     ell_binning['binwidth'])
+    outname += f"_LMIN{ell_binning['lmin']}_LMAX{ell_binning['lmax']}_BW{ell_binning['binwidth']}"
 
-elif ell_binning['ell_binning'] == 'log' or ell_binning['ell_binning'] == 'log_her':
-    outname += '_LMIN{}_NELL{}'.format(ell_binning['lmin'],
-                                      ell_binning['nell'])
+elif ell_binning['ell_binning'] == 'log':
+    outname += f"_LMIN{ell_binning['lmin']}_LMAX{ell_binning['lmax']}_NELL{ell_binning['nell']}"
 
-print('\n Saving to {} format'.format(in_out['output_format']))
+print(f"\n Saving to {in_out['output_format']} format")
 if in_out['output_format'] == 'numpy':
     # Save dictionnary to numpy file
     np.save(outname+'.npy', cls_dic)
