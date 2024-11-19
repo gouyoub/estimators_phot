@@ -139,8 +139,8 @@ else :
     maps_dic = maps_noise_dic['maps']
     noise_dic = maps_noise_dic['noise']
 
-    nofz_dic = np.load(in_out['nofz_name']+'.npy', allow_pickle=True).item()
-    ngal_dic = np.load(in_out['ngal_name']+'.npy', allow_pickle=True).item()
+    nofz_dic = np.load(in_out['nofz_name'], allow_pickle=True).item()
+    ngal_dic = np.load(in_out['ngal_name'], allow_pickle=True).item()
 
 #-- Save maps and associated noise
 if maps['save_maps']:
@@ -202,7 +202,7 @@ for probe in probe_selection['probes']:
 cls_dic['ell'] = bnmt.get_effective_ells()
 
 #-- Saving Cl's
-outname = f"{ref_out_fname}_Cls_NS{nside}_LBIN{ell_binning}"
+outname = f"{ref_out_fname}_Cls_NS{nside}_LBIN{ell_binning['ell_binning']}"
 
 if ell_binning['ell_binning'] == 'lin':
     outname += f"_LMIN{ell_binning['lmin']}_LMAX{ell_binning['lmax']}_BW{ell_binning['binwidth']}"
@@ -213,7 +213,7 @@ elif ell_binning['ell_binning'] == 'log':
 print(f"\n Saving to {in_out['output_format']} format")
 if in_out['output_format'] == 'numpy':
     # Save dictionnary to numpy file
-    np.save(outname+'.npy', cls_dic)
+    np.save(outname+".npy", cls_dic)
 
 if in_out['output_format'] == 'twopoint':
     # Save to two point file
@@ -224,7 +224,7 @@ if in_out['output_format'] == 'twopoint':
                      z_binning['selected_bins'],
                      probe_selection['probes'],
                      probe_selection['cross'],
-                     (outname+'.fits'))
+                     (outname+".fits"))
 
 print('\nDONE')
 

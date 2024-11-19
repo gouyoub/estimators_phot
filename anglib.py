@@ -576,13 +576,17 @@ def decouple_noise(noise_array, wsp, nside, depixelate):
 
 def couple_noise(noise_array, wsp, bnmt, fsky, nside, depixelate):
 
+    # Not sure why but the debiasing agrees better with the one from
+    # Heracles for WL like this...
+
     i_lmax = noise_array.shape[1]
 
     snl = noise_array / pixwin(nside, depixelate)[:i_lmax]
-    snl_coupled = wsp.couple_cell(snl)[0]
+    # snl_coupled = wsp.couple_cell(snl)[0]
+    snl_coupled = wsp.decouple_cell(snl)[0]*fsky
 
     # Bin the coupled noise
-    snl_coupled = bnmt.bin_cell(snl_coupled)[0]/fsky
+    # snl_coupled = bnmt.bin_cell(snl_coupled)[0]/fsky
 
     return snl_coupled
 
