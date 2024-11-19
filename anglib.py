@@ -386,7 +386,7 @@ def compute_master(f_a, f_b, wsp, nside, depixelate):
     cl_coupled /= pixwin(nside, depixelate)[:i_lmax]
 
     # decouple and bin
-    cl_decoupled = wsp.decouple_cell([cl_coupled[0]])
+    cl_decoupled = wsp.decouple_cell(cl_coupled)
 
     return cl_decoupled[0]
 
@@ -401,7 +401,7 @@ def compute_coupled(f_a, f_b, nside, depixelate, bnmt):
 
     return cl_binned[0]
 
-def edges_binning(NSIDE, lmin, bw):
+def linear_binning(lmax, lmin, bw):
     """
     Define an ell binning for a given NSIDE, lmin, and bin width.
 
@@ -428,7 +428,6 @@ def edges_binning(NSIDE, lmin, bw):
     nmt.NmtBin object with 13 bins: [(10, 15), (15, 20), ..., (60, 65)]
     """
 
-    lmax = 2*NSIDE
     nbl = (lmax-lmin)//bw + 1
     elli = np.zeros(nbl, int)
     elle = np.zeros(nbl, int)
@@ -440,14 +439,13 @@ def edges_binning(NSIDE, lmin, bw):
     b = nmt.NmtBin.from_edges(elli, elle)
     return b
 
-def edges_log_binning(NSIDE, lmin, nbl):
-    lmax = 2*NSIDE
+def log_binning_old(lmax, lmin, nbl):
     bin_edges = np.logspace(np.log10(lmin), np.log10(lmax), nbl)
     bin_edges = np.floor(bin_edges).astype(int)
     b = nmt.NmtBin.from_edges(bin_edges[:-1], bin_edges[1:])
     return b
 
-def log_binning_ala_hercacles(lmax, lmin, nbl, w=None):
+def log_binning(lmax, lmin, nbl, w=None):
     op = np.log10
     inv = lambda x: 10**x
 
@@ -534,7 +532,7 @@ def compute_noise(tracer, tbin, fsky):
 
     return noise
 
-def decouple_noise(noise, wsp, nside, depixelate):
+def decouple_noise(noise_array, wsp, nside, depixelate):
     """
     Decouple the shot/shape noise power spectrum.
 
@@ -568,14 +566,20 @@ def decouple_noise(noise, wsp, nside, depixelate):
     >>> decouple_noise(noise, wsp, nside, depixelate)
     array([...])
     """
-    snl = np.array([np.full(3 * nside, noise)]) / pixwin(nside, depixelate)
+
+    i_lmax = noise_array.shape[1]
+
+    snl = noise_array / pixwin(nside, depixelate)[:i_lmax]
     snl_decoupled = wsp.decouple_cell(snl)[0]
 
     return snl_decoupled
 
-def couple_noise(noise, wsp, bnmt, fsky, nside, depixelate):
-    snl = np.array([np.full(3 * nside, noise)]) / pixwin(nside, depixelate)
-    snl_coupled = wsp.couple_cell(snl)
+def couple_noise(noise_array, wsp, bnmt, fsky, nside, depixelate):
+
+    i_lmax = noise_array.shape[1]
+
+    snl = noise_array / pixwin(nside, depixelate)[:i_lmax]
+    snl_coupled = wsp.couple_cell(snl)[0]
 
     # Bin the coupled noise
     snl_coupled = bnmt.bin_cell(snl_coupled)[0]/fsky
@@ -623,11 +627,34 @@ def debias(cl, noise, wsp, bnmt, fsky, nside, debias_bool, depixelate_bool, deco
     >>> debias(cl, noise, w, nside, debias_bool, depixelate_bool)
     array([0.09451773, 0.19451773, 0.29451773])
     """
+
     if debias_bool:
-        if decouple_bool:
-            cl -= decouple_noise(noise, wsp, nside, depixelate_bool)
+
+        lmax = wsp.wsp.bin.ell_max
+        array_shape = wsp.get_bandpower_windows().shape[0]
+
+        if array_shape == 1:
+            noise_array = np.array([np.full(lmax+1, noise)])
+
+        elif array_shape == 2:
+            noise_array = np.array([np.full(lmax+1, noise),
+                                    np.zeros(lmax+1)])
+        elif array_shape == 4:
+            noise_array = np.array([np.full(lmax+1, noise),
+                                    np.zeros(lmax+1),
+                                    np.zeros(lmax+1),
+                                    np.zeros(lmax+1)])
+
         else :
-            cl -= couple_noise(noise, wsp, bnmt, fsky, nside, depixelate_bool)
+            raise ValueError(f"Mixing matrix has weird shape ({array_shape})"
+                             "It should be 1, 2 or 4")
+
+        if decouple_bool:
+            cl -= decouple_noise(noise_array, wsp, nside, depixelate_bool)
+
+        else :
+            cl -= couple_noise(noise_array, wsp, bnmt, fsky, nside, depixelate_bool)
+
     return cl
 
 def pixwin(nside, depixelate):
@@ -941,7 +968,15 @@ def get_iter_nokeymap(probe, cross, zbins):
 
     return iter_probe[probe]
 
-#---- Covariance ----#
+#---- Workspaces ----#
+
+def create_workspaces(bin_scheme, mask, wkspce_name, probe):
+    spin_probe_dic = {
+        'GC'  : (0,0),
+        'WL'  : (2,2),
+        'GGL' : (0,2)}
+
+    return coupling_matrix(bin_scheme, mask, wkspce_name, *spin_probe_dic[probe])
 
 def coupling_matrix(bin_scheme, mask, wkspce_name, spin1, spin2):
     """
@@ -1001,3 +1036,11 @@ def coupling_matrix(bin_scheme, mask, wkspce_name, spin1, spin2):
     print('Done computing the mixing matrix. It took ', time.time()-start, 's.')
     return w
 
+#---- Utils ----#
+def probe_ref_mapping(probe):
+    mapping = {
+        'GC' : 'galaxy_cl',
+        'WL' : 'shear_cl',
+        'GGL' : 'galaxy_shear_cl'}
+
+    return mapping[probe]

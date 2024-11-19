@@ -124,31 +124,30 @@ if pixels['save_maps']:
 
 #-- Define nmt multipole binning
 if ell_binning['ell_binning'] == 'lin':
-    bnmt = al.edges_binning(nside, ell_binning['lmin'], ell_binning['binwidth'])
+    bnmt = al.linear_binning(ell_binning['lmax'], ell_binning['lmin'], ell_binning['binwidth'])
 
 elif ell_binning['ell_binning'] == 'log':
-    bnmt = al.edges_log_binning(nside, ell_binning['lmin'], ell_binning['nell'])
-
-elif ell_binning['ell_binning'] == 'log_her':
-    bnmt = al.log_binning_ala_hercacles(nside, ell_binning['lmin'], ell_binning['nell'])
+    bnmt = al.log_binning(ell_binning['lmax'], ell_binning['lmin'], ell_binning['nell'])
 
 #-- Define nmt workspace only with the mask
-print('\nGetting the mask and computing the mixing matrix ')
-w = nmt.NmtWorkspace()
-fmask = nmt.NmtField(mask, [mask], lmax=bnmt.lmax) # nmt field with only the mask
+print('\nGetting the mask and computing the mixing matrices ')
 start = time.time()
-w.compute_coupling_matrix(fmask, fmask, bnmt) # compute the mixing matrix (which only depends on the mask) just once
-w_fname = '{}_NmtWorkspace_NS{}_LBIN{}'.format(in_out['output_name'], nside, ell_binning['ell_binning'])
-print('w_fname : ', w_fname)
+
+w_fname_base = f"{in_out['output_name']}_NmtWorkspace_NS{nside}_LBIN{ell_binning['ell_binning']}"
+
 if ell_binning['ell_binning'] == 'lin':
-    w_fname += '_LMIN{}_BW{}'.format(ell_binning['lmin'],
-                                     ell_binning['binwidth'])
-elif ell_binning['ell_binning'] == 'log' or ell_binning['ell_binning'] == 'log_her':
-    w_fname += '_LMIN{}_NELL{}'.format(ell_binning['lmin'],
-                                      ell_binning['nell'])
-w_fname += '.fits'
-w.write_to(w_fname)
-print('\n',time.time()-start,'s to compute the coupling matrix')
+    w_fname_base += f"_LMIN{ell_binning['lmin']}_LMAX{ell_binning['lmax']}_BW{ell_binning['binwidth']}"
+
+elif ell_binning['ell_binning'] == 'log':
+    w_fname_base += f"_LMIN{ell_binning['lmin']}_LMAX{ell_binning['lmax']}_NELL{ell_binning['nell']}"
+
+w_dic = {}
+for probe in probe_selection['probes']:
+    w_fname = f"{w_fname_base}_{al.probe_ref_mapping(probe)}.fits"
+    w_dic[probe] = al.create_workspaces(bnmt, mask, w_fname, probe)
+    print('w_fname : ', w_fname)
+
+print('\n',time.time()-start,'s to compute the coupling matrices')
 
 #-- Cl computation loop
 cls_dic  = OrderedDict() # To store the cl to be saved in a fit file
@@ -163,14 +162,14 @@ for probe in probe_selection['probes']:
 
         # Compute Peudo-Cl's or bandpowers
         if spectra['decoupling']:
-            cl = al.compute_master(fld_a, fld_b, w, nside, pixels['depixelate'])
+            cl = al.compute_master(fld_a, fld_b, w_dic[probe], nside, pixels['depixelate'])
         else:
             cl = al.compute_coupled(fld_a, fld_b, nside, pixels['depixelate'], bnmt)
 
         # Remove noise bias from auto correlation if wanted
         if pa == pb:
-            cl = al.debias(cl, noise_dic[pa], w, nside, noise['debias'],
-                           pixels['depixelate'], spectra['decoupling'], fsky, bnmt)
+            cl = al.debias(cl, noise_dic[pa], w_dic[probe], fsky, bnmt, nside, noise['debias'],
+                           pixels['depixelate'], spectra['decoupling'])
 
         cls_dic['{}-{}'.format(pa,pb)] = cl
 
