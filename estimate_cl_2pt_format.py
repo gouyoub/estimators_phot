@@ -50,6 +50,14 @@ if maps['load_maps']:
     assert z_binning['only_nofz'] is False, 'nofz and ngal cannot be estimated'
     'when maps are loaded directly without loading the catalog'
 
+if os.path.isfile(in_out['output_dir']):
+    raise FileExistsError(f"This output directory already exists !")
+
+#-- Managing filenames
+print("\nCreating the output directory")
+os.mkdir(in_out['output_dir'])
+ref_out_fname = f"{in_out['output_dir']}/{in_out['output_dir'].split('/')[-1]}"
+
 #-- Get the mask
 mask = hp.read_map(in_out['mask'])
 fsky = np.mean(mask)
@@ -85,30 +93,27 @@ if not maps['load_maps']:
         ngal_arcmin_source = (ngal_bins_source/(4*np.pi*fsky**2))/(((180/np.pi)**2)*3600)
 
     #-- Build n(z)
+    nofz_out_fname = f"{ref_out_fname}_nofz"
+    ngal_out_fname = f"{ref_out_fname}_ngal"
     nofz_dic = {}
     ngal_dic = {}
     print('\nSaving the n(z) and galaxy number density')
     if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
         nofz_lens = al.build_nz(tomo_bins_lens)
-        np.savetxt(in_out['nofz_name']+'_lens.txt', nofz_lens.T)
-        np.savetxt(in_out['ngal_name']+'_lens.txt', ngal_arcmin_lens)
+        np.savetxt(nofz_out_fname+'_lens.txt', nofz_lens.T)
+        np.savetxt(ngal_out_fname+'_arcmin2_lens.txt', ngal_arcmin_lens)
         nofz_dic['lens'] = nofz_lens
         ngal_dic['lens'] = ngal_arcmin_lens
 
     if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
         nofz_source = al.build_nz(tomo_bins_source)
-        np.savetxt(in_out['nofz_name']+'_source.txt', nofz_source.T)
-        np.savetxt(in_out['ngal_name']+'_source.txt', ngal_arcmin_source)
+        np.savetxt(nofz_out_fname+'_source.txt', nofz_source.T)
+        np.savetxt(ngal_out_fname+'_arcmin2_source.txt', ngal_arcmin_source)
         nofz_dic['source'] = nofz_source
         ngal_dic['source'] = ngal_arcmin_source
 
-    np.save(in_out['nofz_name']+'.npy', nofz_dic)
-    np.save(in_out['ngal_name']+'.npy', ngal_dic)
-
-    if z_binning['only_nofz']:
-        print('\nYou only asked for the n(z)')
-        print('\nDONE')
-        os._exit(0)
+    np.save(nofz_out_fname+'.npy', nofz_dic)
+    np.save(ngal_out_fname+'.npy', ngal_dic)
 
     #-- Estimate maps
     maps_dic = {}
@@ -135,9 +140,9 @@ else :
 
 #-- Save maps and associated noise
 if maps['save_maps']:
+    maps_noise_out_fname = f"{ref_out_fname}_maps_noise_NS{nside}.npy"
     maps_noise_dic = {'maps'  : maps_dic, 'noise' : noise_dic}
-    maps_noise_name = '{}_maps_noise_NS{}'.format(in_out['output_name'], nside)
-    np.save(maps_noise_name+'.npy', maps_noise_dic)
+    np.save(maps_noise_out_fname, maps_noise_dic)
 
 #-- Define nmt multipole binning
 if ell_binning['ell_binning'] == 'lin':
@@ -155,7 +160,7 @@ w = nmt.NmtWorkspace()
 fmask = nmt.NmtField(mask, [mask], lmax=bnmt.lmax) # nmt field with only the mask
 start = time.time()
 w.compute_coupling_matrix(fmask, fmask, bnmt) # compute the mixing matrix (which only depends on the mask) just once
-w_fname = '{}_NmtWorkspace_NS{}_LBIN{}'.format(in_out['output_name'], nside, ell_binning['ell_binning'])
+w_fname = '{}_NmtWorkspace_NS{}_LBIN{}'.format(ref_out_fname, nside, ell_binning['ell_binning'])
 print('w_fname : ', w_fname)
 if ell_binning['ell_binning'] == 'lin':
     w_fname += '_LMIN{}_BW{}'.format(ell_binning['lmin'],
@@ -198,7 +203,7 @@ for probe in probe_selection['probes']:
         cls_dic['{}-{}'.format(pa,pb)] = cl
 cls_dic['ell'] = bnmt.get_effective_ells()
 
-outname = '{}_Cls_NS{}_LBIN{}'.format(in_out['output_name'],
+outname = '{}_Cls_NS{}_LBIN{}'.format(ref_out_fname,
                                       nside,
                                       ell_binning['ell_binning'])
 
