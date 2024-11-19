@@ -46,10 +46,9 @@ nz              = len(z_binning['selected_bins'])
 
 #-- Checks
 if maps['load_maps']:
-    assert maps['save_maps'] is False, 'Maps cannot be saved if they are loaded'
-if maps['load_maps']:
-    assert z_binning['only_nofz'] is False, 'nofz and ngal cannot be estimated when maps are loaded directly without loading the catalog'
-
+    assert maps['save_maps'] is False, 'Maps are not saved if they are loaded'
+    assert z_binning['only_nofz'] is False, 'nofz and ngal cannot be estimated'
+    'when maps are loaded directly without loading the catalog'
 
 #-- Get the mask
 mask = hp.read_map(in_out['mask'])
@@ -59,7 +58,7 @@ if apodization['apodize']:
     mask = nmt.mask_apodization(mask, apodization['aposcale'],
                                 apotype=apodization['apotype'])
 
-if not maps['load_map']:
+if not maps['load_maps']:
     #-- Redshift binning
     if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
         print(probe_selection['probes'])
@@ -127,20 +126,18 @@ if not maps['load_map']:
             noise_dic['{}{}'.format(k,izb+1)] = al.compute_noise(k, tomo_bins[i], fsky)
 
 else :
-    maps_dic = np.load(in_out['map_name'], allow_pickle=True).item()
-    noise_dic = np.load(in_out['noise_name'], allow_pickle=True).item()
-    nofz_dic = np.load(in_out['nofz_name'], allow_pickle=True).item()
-    ngal_dic = np.load(in_out['ngal_name'], allow_pickle=True).item()
+    maps_noise_dic = np.load(in_out['maps_noise_name'], allow_pickle=True).item()
+    maps_dic = maps_noise_dic['maps']
+    noise_dic = maps_noise_dic['noise']
+
+    nofz_dic = np.load(in_out['nofz_name']+'.npy', allow_pickle=True).item()
+    ngal_dic = np.load(in_out['ngal_name']+'.npy', allow_pickle=True).item()
 
 #-- Save maps and associated noise
 if maps['save_maps']:
-    # maps
-    map_name = '{}_maps_NS{}'.format(in_out['output_name'], nside)
-    np.save(map_name+'.npy', maps_dic)
-
-    # noise
-    noise_name = '{}_noise_NS{}'.format(in_out['output_name'], nside)
-    np.save(noise_name+'.npy', noise_dic)
+    maps_noise_dic = {'maps'  : maps_dic, 'noise' : noise_dic}
+    maps_noise_name = '{}_maps_noise_NS{}'.format(in_out['output_name'], nside)
+    np.save(maps_noise_name+'.npy', maps_noise_dic)
 
 #-- Define nmt multipole binning
 if ell_binning['ell_binning'] == 'lin':
