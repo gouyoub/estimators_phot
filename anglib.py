@@ -397,7 +397,7 @@ def compute_coupled(f_a, f_b, bnmt, nside, depixelate):
     cl_coupled /= pixwin(nside, depixelate)[:i_lmax]
 
     # binning
-    cl_binned = bnmt.bin_cell([cl_coupled[0]])
+    cl_binned = bnmt.bin_cell(np.array([cl_coupled[0]]))
 
     return cl_binned[0]
 

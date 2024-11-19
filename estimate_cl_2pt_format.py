@@ -194,8 +194,8 @@ for probe in probe_selection['probes']:
 
         # Remove noise bias from auto correlation if wanted
         if pa == pb:
-            cl = al.debias(cl, noise_dic[pa], w_dic[probe], fsky, bnmt, nside, noise['debias'],
-                           maps['depixelate'], spectra['decoupling'])
+            cl = al.debias(cl, noise_dic[pa], w_dic[probe], bnmt, fsky, nside,
+                           noise['debias'], maps['depixelate'], spectra['decoupling'])
 
         cls_dic[f"{pa}-{pb}"] = cl
 
