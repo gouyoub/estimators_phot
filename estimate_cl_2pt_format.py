@@ -48,8 +48,8 @@ nz              = len(z_binning['selected_bins'])
 if maps['load_maps']:
     assert maps['save_maps'] is False, 'Maps are not saved if they are loaded.'
 
-if ell_binning['lmax'] > 2*nside:
-    raise ValueError(f"The ell max is larger than than 2 x NSIDE !")
+if ell_binning['lmax'] > 3*nside:
+    raise ValueError(f"The ell max is larger than than 3 x NSIDE !")
 
 if os.path.isfile(in_out['output_dir']):
     raise FileExistsError(f"This output directory already exists !")
@@ -135,6 +135,7 @@ if not maps['load_maps']:
             noise_dic[f"{k}{izb+1}"] = al.compute_noise(k, tomo_bins[i], fsky)
 
 else :
+    print("\nThe maps, noise, nofz and ngal will be loaded from external files")
     maps_noise_dic = np.load(in_out['maps_noise_name'], allow_pickle=True).item()
     maps_dic = maps_noise_dic['maps']
     noise_dic = maps_noise_dic['noise']
@@ -144,6 +145,7 @@ else :
 
 #-- Save maps and associated noise
 if maps['save_maps']:
+    print("\nSaving the maps and noise")
     maps_noise_out_fname = f"{ref_out_fname}_maps_noise_NS{nside}.npy"
     maps_noise_dic = {'maps'  : maps_dic, 'noise' : noise_dic}
     np.save(maps_noise_out_fname, maps_noise_dic)
