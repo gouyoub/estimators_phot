@@ -35,7 +35,7 @@ import anglib as al
 import pymaster as nmt
 
 # Load mask file
-mask_fname = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/mask/flagship2_mask_binary_NS256.fits'
+mask_fname = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/mask/fullsky_mask_binary_NS256.fits'
 mask = hp.read_map(mask_fname)
 
 # Compute NSIDE from mask
@@ -44,20 +44,20 @@ print(NSIDE)
 # Generate linear binning scheme
 # binning = al.edges_log_binning(NSIDE=NSIDE, lmin=10, nbl=11)
 # binning = al.edges_binning(NSIDE=NSIDE, lmin=10, bw=50)
-lmax=2*NSIDE+1
-binning = al.log_binning_ala_hercacles(lmax=lmax, lmin=10, nbl=32)
+lmax=256
+binning = al.log_binning(lmax=lmax, lmin=10, nbl=32)
 # binning = nmt.NmtBin.from_nside_linear(NSIDE, nlb=50, is_Dell=False)
 
 print(binning.get_effective_ells())
 
 # Compute coupling matrix and save to file
-w_fname = f'/home/hidra2/gouyou/euclid/nl_bias_flagship/data/nmt_workspace/flagship2_NS{NSIDE}_LBINlog_her_LMAX{lmax}_LMIN10_NELL32_galaxy_cl.fits'
+w_fname = f'/home/hidra2/gouyou/euclid/nl_bias_flagship/data/nmt_workspace/fullsky_NS{NSIDE}_LBINlog_LMAX{lmax}_LMIN10_NELL32_s00.fits'
 w = al.coupling_matrix(binning, mask, w_fname, 0, 0)
 
-# Compute coupling matrix and save to file
-w_fname = f'/home/hidra2/gouyou/euclid/nl_bias_flagship/data/nmt_workspace/flagship2_NS{NSIDE}_LBINlog_her_LMAX{lmax}_LMIN10_NELL32_galaxy_shear_cl.fits'
-w = al.coupling_matrix(binning, mask, w_fname, 0, 2)
+# # Compute coupling matrix and save to file
+# w_fname = f'/home/hidra2/gouyou/euclid/nl_bias_flagship/data/nmt_workspace/fullsky_NS{NSIDE}_LBINlog_LMAX{lmax}_LMIN10_NELL32_galaxy_shear_cl.fits'
+# w = al.coupling_matrix(binning, mask, w_fname, 0, 2)
 
-# Compute coupling matrix and save to file
-w_fname = f'/home/hidra2/gouyou/euclid/nl_bias_flagship/data/nmt_workspace/flagship2_NS{NSIDE}_LBINlog_her_LMAX{lmax}_LMIN10_NELL32_shear_cl.fits'
-w = al.coupling_matrix(binning, mask, w_fname, 2, 2)
+# # Compute coupling matrix and save to file
+# w_fname = f'/home/hidra2/gouyou/euclid/nl_bias_flagship/data/nmt_workspace/fullsky_NS{NSIDE}_LBINlog_her_LMAX{lmax}_LMIN10_NELL32_shear_cl.fits'
+# w = al.coupling_matrix(binning, mask, w_fname, 2, 2)

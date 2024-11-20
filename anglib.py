@@ -1040,6 +1040,89 @@ def coupling_matrix(bin_scheme, mask, wkspce_name, spin1, spin2):
     print('Done computing the mixing matrix. It took ', time.time()-start, 's.')
     return w
 
+#---- Covariance ----#
+
+def decoupled_covariance(Cl, keys, wa, wb, cov_w, nbl):
+
+    ncl = len(keys)
+    covmat = np.zeros((ncl*nbl, ncl*nbl))
+
+    for (idx1, key1), (idx2, key2) in it.combinations_with_replacement(enumerate(keys), 2):
+        print(key1, key2, flush=True)
+        probeA, probeB = key1.split('-')
+        probeC, probeD = key2.split('-')
+
+        covmat[idx1*nbl:(idx1+1)*nbl, idx2*nbl:(idx2+1)*nbl] =\
+            nmt.gaussian_covariance(cov_w, 0, 0, 0, 0,
+                                    [Cl['-'.join([probeA, probeC])]],
+                                    [Cl['-'.join([probeB, probeC])]],
+                                    [Cl['-'.join([probeA, probeD])]],
+                                    [Cl['-'.join([probeB, probeD])]],
+                                    wa, wb=wb, coupled=False)
+    covmat = covmat + covmat.T - np.diag(covmat.diagonal())
+
+    return covmat
+
+def coupled_covariance(Cl, keys, wa, wb, cov_w, nbl, weights=None):
+
+    assert wa.wsp.lmax == wb.wsp.lmax, 'The lmax from the two workspace is different.'
+
+    ncl = len(keys)
+    nell = wa.wsp.lmax+1
+    covmat = np.zeros((ncl*nbl, ncl*nbl))
+
+    for (idx1, key1), (idx2, key2) in it.combinations_with_replacement(enumerate(keys), 2):
+        print(key1, key2, flush=True)
+        probeA, probeB = key1.split('-')
+        probeC, probeD = key2.split('-')
+
+        unbinned_block =\
+            nmt.gaussian_covariance(cov_w, 0, 0, 0, 0,
+                                    [Cl['-'.join([probeA, probeC])]],
+                                    [Cl['-'.join([probeB, probeC])]],
+                                    [Cl['-'.join([probeA, probeD])]],
+                                    [Cl['-'.join([probeB, probeD])]],
+                                    wa, wb=wb, coupled=True)
+
+        # bin each block
+        covmat[idx1*nbl:(idx1+1)*nbl, idx2*nbl:(idx2+1)*nbl] =\
+            covariance_binning_sum(unbinned_block, wa, weights=None)
+
+    covmat = covmat + covmat.T - np.diag(covmat.diagonal())
+
+    return covmat
+
+def covariance_binning_sum(block_unbinned, workspace, weights=None):
+
+    if weights != None:
+        raise ValueError('Weights are not yet implemented in the covariance binning !')
+
+    nbins = workspace.get_bandpower_windows().shape[1]
+    binning = workspace.wsp.bin
+    binned_block = np.zeros((nbins,nbins))
+
+    for bin_i in range(nbins):
+        for bin_j in range(bin_i, nbins):
+            # Select multipoles in the bins
+            nell_in_bin_i = nmt.nmtlib.get_nell(binning, bin_i)
+            nell_in_bin_j = nmt.nmtlib.get_nell(binning, bin_j)
+            ells_i = nmt.nmtlib.get_ell_list(binning, bin_i, nell_in_bin_i)
+            ells_j = nmt.nmtlib.get_ell_list(binning, bin_j, nell_in_bin_j)
+
+            # Compute covariance sums
+            sum_cov = 0
+            for ell in ells_i:
+                for ell_prime in ells_j:
+                    sum_cov += block_unbinned[ell, ell_prime]
+
+            # Normalize by the number of pairs of multipoles in the bins
+            num_pairs = len(ells_i) * len(ells_j)
+            binned_block[bin_i, bin_j] = sum_cov/num_pairs
+
+    binned_block = binned_block + binned_block.T - np.diag(binned_block.diagonal())
+
+    return binned_block
+
 #---- Utils ----#
 def probe_ref_mapping(probe):
     mapping = {
@@ -1048,3 +1131,4 @@ def probe_ref_mapping(probe):
         'GGL' : 'galaxy_shear_cl'}
 
     return mapping[probe]
+
