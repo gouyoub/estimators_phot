@@ -43,7 +43,7 @@ import string_manager as stma
 
 #---- Redshift binning ----#
 
-def create_redshift_bins_complete(file_path, selected_bins, sample,
+def create_redshift_bins_complete(file_path, columns, selected_bins, sample,
                                   division='EP_weights',
                                   nofz_redshift_type='true_redshift_gal',
                                   zmin=0.2, zmax=2.54, nbins=13):
@@ -92,7 +92,7 @@ def create_redshift_bins_complete(file_path, selected_bins, sample,
         # define redshift edges for binning
         weight = {'source':'she_weight',
                   'lens':'phz_weight'}
-        wq = DescrStatsW(data=df['zp'], weights=df[weight[sample]])
+        wq = DescrStatsW(data=df['zp'], weights=df[columns[weight[sample]]])
         z_edges = wq.quantile(probs=np.linspace(0,1,nbins+1), return_pandas=False)
 
     # do the actual division in tomographic bins
@@ -102,17 +102,17 @@ def create_redshift_bins_complete(file_path, selected_bins, sample,
         if not (0 <= i < nbins):
             raise ValueError(f"Invalid bin index: {i}. It should be in the range [0, {nbins}).")
         print('- bin {}/{}'.format(i+1, nbins))
-        selection = (df['zp'] >= z_edges[i]) & (df['zp'] <= z_edges[i+1])
+        selection = (df[columns['zp']] >= z_edges[i]) & (df[columns['zp']] <= z_edges[i+1])
         ngal_bin.append(df[nofz_redshift_type][selection].size)
 
         tbin = {
-            'ra': df['ra'][selection],
-            'dec': df['dec'][selection],
+            'ra': df[columns['ra']][selection],
+            'dec': df[columns['dec']][selection],
             'z': df[nofz_redshift_type][selection]
         }
         if sample == 'source':
-            tbin['gamma1'] = df['gamma1'][selection]
-            tbin['gamma2'] = df['gamma2'][selection]
+            tbin['gamma1'] = df[columns['gamma1']][selection]
+            tbin['gamma2'] = df[columns['gamma2']][selection]
 
         tomo_bins.append(tbin)
 

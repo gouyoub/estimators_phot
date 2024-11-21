@@ -40,6 +40,8 @@ z_binning       = load_it(config._sections['z_binning'])
 noise           = load_it(config._sections['noise'])
 apodization     = load_it(config._sections['apodization'])
 spectra         = load_it(config._sections['spectra'])
+columns_lens    = load_it(config._sections['columns_lens'])
+columns_source    = load_it(config._sections['columns_source'])
 nside           = maps['nside']
 nz              = len(z_binning['selected_bins'])
 
@@ -75,6 +77,7 @@ if not maps['load_maps']:
     if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
         print(probe_selection['probes'])
         tomo_bins_lens, ngal_bins_lens = al.create_redshift_bins_complete(in_out['catalog_lens'],
+                                                    columns_lens,
                                                     z_binning['selected_bins'],
                                                     'lens',
                                                     z_binning['division'],
@@ -87,6 +90,7 @@ if not maps['load_maps']:
     if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
         print(probe_selection['probes'])
         tomo_bins_source, ngal_bins_source = al.create_redshift_bins_complete(in_out['catalog_source'],
+                                                    columns_source,
                                                     z_binning['selected_bins'],
                                                     'source',
                                                     z_binning['division'],
