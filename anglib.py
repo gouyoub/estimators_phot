@@ -87,12 +87,12 @@ def create_redshift_bins_complete(file_path, columns, selected_bins, sample,
         print('accounting for weights.')
 
         # cut data at appropriate redshift edges
-        df = df[(df['zp'] >= zmin) & (df['zp'] < zmax)]
+        df = df[(df[columns['zp']] >= zmin) & (df[columns['zp']] < zmax)]
 
         # define redshift edges for binning
         weight = {'source':'she_weight',
                   'lens':'phz_weight'}
-        wq = DescrStatsW(data=df['zp'], weights=df[columns[weight[sample]]])
+        wq = DescrStatsW(data=df[columns['zp']], weights=df[columns[weight[sample]]])
         z_edges = wq.quantile(probs=np.linspace(0,1,nbins+1), return_pandas=False)
 
     # do the actual division in tomographic bins
