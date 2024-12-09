@@ -37,7 +37,7 @@ import twopoint
 from statsmodels.stats.weightstats import DescrStatsW
 
 
-import string_manager as stma
+import general_libraries.string_manager as stma
 
 
 

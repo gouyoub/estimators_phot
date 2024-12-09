@@ -3,8 +3,8 @@ import pymaster as nmt
 import healpy as hp
 
 import anglib as al
-import cov_utils as cu
-import loading
+import general_libraries.cov_utils as cu
+import general_libraries.loading
 
 import sys
 import itertools

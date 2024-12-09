@@ -13,7 +13,7 @@ from collections import OrderedDict
 
 import pymaster as nmt
 import anglib as al
-from loading import load_it
+from general_libraries.loading import load_it
 
 import sys
 import os
