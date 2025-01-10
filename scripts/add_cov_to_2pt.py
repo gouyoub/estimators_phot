@@ -2,13 +2,13 @@ import twopoint
 import numpy as np
 from astropy.io import fits
 
-fsky = 0.125
+# fsky = 0.125
 
-twopoint_file = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/measurement/FS2_3x2_firstchain_decoupled_log/FS2_3x2_firstchain_decoupled_log_Cls_NS1024_LBINlog_LMIN10_LMAX2048_NELL32.fits'
-data = twopoint.TwoPointFile.from_fits(twopoint_file, covmat_name=None)
-# data = twopoint.TwoPointFile.from_fits(twopoint_file)
+twopoint_file = '/Users/sgouyoub/Documents/work/euclid/nlbias/data/measurement/FS2_30deg_3x2_6EP_noIA-nomag-nored-nowh/FS2_30deg_3x2_6EP_noIA-nomag-nored-nowh_Cls_NS1024_LBINlog_LMIN10_LMAX1500_NELL32.fits'
+# data = twopoint.TwoPointFile.from_fits(twopoint_file, covmat_name=None)
+data = twopoint.TwoPointFile.from_fits(twopoint_file)
 
-cov_file = '/home/hidra2/gouyou/euclid/nl_bias_flagship/data/covariance/FS2_3x2_firstchain_partialsky_6ED_NS1024_LBINlog_her_LMIN10_NELL32.npy'
+cov_file = '/Users/sgouyoub/Documents/work/euclid/nlbias/data/covariance/FS2_30deg_3x2_6EP_noIA-nomag-nored-nowh_covariance_nmt_coupled_NS1024_LBINlog_LMIN10_LMAX1500_NELL32.npy'
 cov = np.load(cov_file)
 # hdul = fits.open('/home/hidra2/gouyou/euclid/nl_bias_flagship/data/measurement/FS2_3x2_firstchain_pskycov_Cls_NS1024_LBINlin_LMIN10_BW50.fits')
 # cov = np.diag(np.diag(hdul['COVMAT'].data))

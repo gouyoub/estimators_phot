@@ -5,21 +5,6 @@ This Python file contains a set of functions designed for estimating 2-point sta
 for photometric analysis in cosmology. The functions utilize the Healpix framework,
 NaMaster (a Python wrapper for MASTER), and other scientific computing libraries.
 
-Functions:
-- ang2map_radec: Convert RA and Dec angles to a Healpix map of galaxy number counts.
-- map2fld: Create NaMaster fields from Healpix maps for a given mask.
-- compute_master: Compute angular power spectrum (Cls) from a pair of NaMaster fields.
-- ang2cl: Perform the entire process to estimate Cl from (RA, Dec) sets using NaMaster.
-- edges_binning: Define an ell binning for a given NSIDE, lmin, and bin width.
-- create_redshift_bins: Create redshift bins and corresponding galaxy catalogs from a FITS file for a specified set of bins.
-
-Dependencies:
-- numpy
-- healpy
-- pymaster
-- astropy
-- time
-
 """
 
 import os
@@ -43,7 +28,7 @@ import general_libraries.string_manager as stma
 
 #---- Redshift binning ----#
 
-def create_redshift_bins_complete(file_path, columns, selected_bins, sample,
+def create_redshift_bins(file_path, columns, selected_bins, sample,
                                   division='EP_weights',
                                   nofz_redshift_type='true_redshift_gal',
                                   zmin=0.2, zmax=2.54, nbins=13):
@@ -51,27 +36,61 @@ def create_redshift_bins_complete(file_path, columns, selected_bins, sample,
     Create redshift bins and corresponding galaxy catalogs from a FITS file
     for a specified set of bins.
 
+    This function processes galaxy data from a FITS file and divides it into
+    tomographic redshift bins. The bins can be either equidistant or equi-populated,
+    depending on the specified division method. For each selected bin, a catalog of
+    galaxies is created, which includes relevant attributes like redshift, position,
+    and optionally shear components.
+
     Parameters
     ----------
     file_path : str
         Path to the FITS file containing galaxy data.
-    selected_bins : list
-        List of indices specifying the redshift bins to consider.
+    columns : dict
+        Dictionary mapping column names in the FITS file to their roles. Expected keys:
+        - 'zp': Column for photometric or estimated redshift.
+        - 'ra': Column for right ascension.
+        - 'dec': Column for declination.
+        - 'gamma1': Column for the first shear component (required for 'source' sample).
+        - 'gamma2': Column for the second shear component (required for 'source' sample).
+        - 'she_weight': Shear weight column (used for equi-populated bins if `sample='source'`).
+        - 'phz_weight': Photometric weight column (used for equi-populated bins if `sample='lens'`).
+    selected_bins : list of int
+        List of indices specifying the redshift bins to include in the output.
+    sample : str
+        Type of galaxy sample, either 'source' or 'lens'. Determines which weights and
+        additional properties (e.g., shear) are included.
+    division : str, optional
+        Method for dividing redshift bins:
+        - 'ED': Equidistant bins.
+        - 'EP_weights': Equi-populated bins, accounting for weights.
+        Default is 'EP_weights'.
+    nofz_redshift_type : str, optional
+        Column name for the redshift to be used in the output catalogs.
+        Default is 'true_redshift_gal'.
     zmin : float, optional
         Minimum redshift for the bins (default is 0.2).
     zmax : float, optional
         Maximum redshift for the bins (default is 2.54).
     nbins : int, optional
-        Number of redshift bins (default is 13).
+        Number of total redshift bins (default is 13).
 
     Returns
     -------
-    tomo_bins : list
-        List of dictionaries containing galaxy catalog information for each
-        selected redshift bin.
-    ngal_bin : list
+    tomo_bins : list of dict
+        List of dictionaries, each corresponding to a selected redshift bin.
+        Each dictionary contains:
+        - 'ra': Right ascension of galaxies in the bin.
+        - 'dec': Declination of galaxies in the bin.
+        - 'z': Redshift of galaxies in the bin.
+        - 'gamma1' and 'gamma2' (if `sample='source'`): Shear components for galaxies.
+    ngal_bin : list of int
         Number of galaxies in each selected redshift bin.
 
+    Raises
+    ------
+    ValueError
+        If any of the selected bin indices are out of the valid range [0, nbins).
     """
     print('\nTomographic binning for {} sample'.format(sample))
     dat = Table.read(file_path, format='fits')
@@ -119,7 +138,30 @@ def create_redshift_bins_complete(file_path, columns, selected_bins, sample,
     return tomo_bins, ngal_bin
 
 def build_nz(tbin, nb=400, nz=1000):
+    """
+    Build normalized redshift distributions and interpolated values for a set of tomographic bins.
 
+    This function computes the redshift distributions (n(z)) for a given set of tomographic bins
+    using histogramming and interpolation. It also provides interpolated n(z) values over a
+    specified range of redshifts for each bin.
+
+    Parameters
+    ----------
+    tbin : list of dict
+        List of dictionaries, each representing a tomographic bin. Each dictionary should have:
+        - 'z': Array-like, containing the redshift values of galaxies in the bin.
+    nb : int, optional
+        Number of histogram bins for constructing the redshift distribution. Default is 400.
+    nz : int, optional
+        Number of interpolation points for the redshift range. Default is 1000.
+
+    Returns
+    -------
+    nz_interp : numpy.ndarray
+        A 2D array of shape `(nzbins + 1, nz)`, where:
+        - The first row contains the interpolated redshift values (z) over the range [zmin, zmax].
+        - Subsequent rows contain the interpolated n(z) values for each tomographic bin.
+    """
     nzbins = len(tbin)
     # find zmin and zmax
     zmin = tbin[0]['z'].min()
@@ -155,15 +197,13 @@ def shear_map(tbin, nside, mask):
 
     Parameters
     ----------
-    ra : array-like
-        Array containing right ascension angles in degrees.
-    dec : array-like
-        Array containing declination angles in degrees.
-    g1 : array-like
-        Array containing the first component of shear values.
-    g2 : array-like
-        Array containing the second component of shear values.
-    ns : int
+    tbin : dict
+        Dictionary containing galaxy catalog data with the following keys:
+        - 'ra': Array of right ascension angles in degrees.
+        - 'dec': Array of declination angles in degrees.
+        - 'gamma1': Array of the first component of shear values.
+        - 'gamma2': Array of the second component of shear values.
+    nside : int
         NSIDE parameter for the Healpix map.
     mask : array-like
         Mask defining the footprint.
@@ -174,17 +214,6 @@ def shear_map(tbin, nside, mask):
         Healpix map of the first component of shear values.
     hpmapg2 : array-like
         Healpix map of the second component of shear values.
-
-    Examples
-    --------
-    >>> ra = np.array([10, 20, 30])
-    >>> dec = np.array([45, 55, 65])
-    >>> g1 = np.array([0.1, 0.2, 0.3])
-    >>> g2 = np.array([0.2, 0.3, 0.4])
-    >>> ns = 64
-    >>> mask = np.ones(hp.nside2npix(ns))
-    >>> shear_map(ra, dec, g1, g2, ns, mask)
-    [array([...]), array([...])]
     """
     #- convert from deg to sr
     ra_rad = tbin['ra'] * (np.pi / 180)
@@ -222,11 +251,11 @@ def density_map(tbin, nside, mask):
 
     Parameters
     ----------
-    ra : array-like
-        Array containing right ascension angles in degrees.
-    dec : array-like
-        Array containing declination angles in degrees.
-    ns : int
+    tbin : dict
+        Dictionary containing galaxy catalog data with the following keys:
+        - 'ra': Array of right ascension angles in degrees.
+        - 'dec': Array of declination angles in degrees.
+    nside : int
         NSIDE parameter for the Healpix map.
     mask : array-like
         Mask defining the footprint.
@@ -235,17 +264,7 @@ def density_map(tbin, nside, mask):
     -------
     hpmap : array-like
         Healpix map of galaxy number density.
-
-    Examples
-    --------
-    >>> ra = np.array([10, 20, 30])
-    >>> dec = np.array([45, 55, 65])
-    >>> ns = 64
-    >>> mask = np.ones(hp.nside2npix(ns))
-    >>> density_map(ra, dec, ns, mask)
-    array([...])
     """
-
     #- convert from deg to sr
     ra_rad = tbin['ra'] * (np.pi / 180)
     dec_rad = tbin['dec'] * (np.pi / 180)
@@ -278,32 +297,19 @@ def map2fld(hpmap, mask, lmax_bin):
     Parameters
     ----------
     hpmap : list or array-like
-        List or array containing the Healpix maps. If len(hpmap) is 2, the first map
+        List or array containing the Healpix maps. If `len(hpmap)` is 2, the first map
         is treated as the negative component and the second as the positive component
-        of the field. If len(hpmap) is 1, it's treated as a single map.
+        of the field. If `len(hpmap)` is 1, it's treated as a single map.
     mask : array-like
         Mask defining the footprint.
+    lmax_bin : int
+        Maximum multipole used for the field.
 
     Returns
     -------
     fld : NmtField
         NaMaster field object representing the input Healpix maps.
-
-    Notes
-    -----
-    NaMaster (NmtField) handles fields for spherical harmonic analysis.
-    This function prepares the fields by associating them with the provided mask.
-    For len(hpmap) == 2, the negative and positive components are assigned accordingly.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> import pymaster as nmt
-    >>> mask = np.ones(12)  # Example mask
-    >>> hpmap = [np.random.randn(12), np.random.randn(12)]  # Example Healpix maps
-    >>> fld = map2fld(hpmap, mask)
     """
-
     if len(hpmap) == 2:
         fld = nmt.NmtField(mask, [-hpmap[0], hpmap[1]], lmax=lmax_bin)
     else:
@@ -324,15 +330,11 @@ def get_map_for_probes(probes):
     Returns
     -------
     maps : list
-        List of function computing the maps based on the selected probes.
-
-    Examples
-    --------
-    >>> probes = ['GC', 'WL']
-    >>> get_map_for_probes(probes)
-    [density_map, shear_map]
-
+        List of functions for computing the maps based on the selected probes.
+    keys : list
+        List of keys ('D' for density, 'G' for shear) corresponding to the selected probes.
     """
+
     maps = []
     keys  = []
 
@@ -364,51 +366,56 @@ def compute_master(f_a, f_b, wsp, nside, depixelate):
         NaMaster workspace containing pre-computed matrices.
     nside : int
         NSIDE parameter for the Healpix maps.
+    depixelate : bool
+        Flag indicating whether to account for pixel window effects.
 
     Returns
     -------
     cl_decoupled : array-like
         Decoupled angular power spectrum.
-
-    Examples
-    --------
-    >>> import pymaster as nmt
-    >>> ns = 64
-    >>> f_a = nmt.NmtField(mask, [hpmap1])
-    >>> f_b = nmt.NmtField(mask, [hpmap2])
-    >>> wsp = nmt.NmtWorkspace()
-    >>> compute_master(f_a, f_b, wsp, ns)
-    array([...])
     """
-
     cl_coupled = nmt.compute_coupled_cell(f_a, f_b)
     i_lmax = cl_coupled.shape[1]
     cl_coupled /= pixwin(nside, depixelate)[:i_lmax]
-
-    # decouple and bin
     cl_decoupled = wsp.decouple_cell(cl_coupled)
-
     return cl_decoupled[0]
 
 def compute_coupled(f_a, f_b, bnmt, nside, depixelate):
+    """
+    Compute and bin the coupled angular power spectrum (Cls) from a pair of NaMaster fields.
 
+    Parameters
+    ----------
+    f_a : nmt.NmtField
+        NaMaster field for the first map.
+    f_b : nmt.NmtField
+        NaMaster field for the second map.
+    bnmt : nmt.NmtBin
+        Binning scheme for the power spectrum.
+    nside : int
+        NSIDE parameter for the Healpix maps.
+    depixelate : bool
+        Flag indicating whether to account for pixel window effects.
+
+    Returns
+    -------
+    cl_binned : array-like
+        Binned coupled angular power spectrum.
+    """
     cl_coupled = nmt.compute_coupled_cell(f_a, f_b)
     i_lmax = cl_coupled.shape[1]
     cl_coupled /= pixwin(nside, depixelate)[:i_lmax]
-
-    # binning
     cl_binned = bnmt.bin_cell(np.array([cl_coupled[0]]))
-
     return cl_binned[0]
 
 def linear_binning(lmax, lmin, bw):
     """
-    Define an ell binning for a given NSIDE, lmin, and bin width.
+    Define a linear ell binning scheme.
 
     Parameters
     ----------
-    NSIDE : int
-        NSIDE parameter for the Healpix maps.
+    lmax : int
+        Maximum ell value for the binning.
     lmin : int
         Minimum ell value for the binning.
     bw : int
@@ -417,41 +424,39 @@ def linear_binning(lmax, lmin, bw):
     Returns
     -------
     b : nmt.NmtBin
-        NaMaster binning object.
-
-    Examples
-    --------
-    >>> nside = 64
-    >>> lmin = 10
-    >>> bw = 5
-    >>> edges_binning(nside, lmin, bw)
-    nmt.NmtBin object with 13 bins: [(10, 15), (15, 20), ..., (60, 65)]
+        NaMaster binning object with linear bins.
     """
-
-    nbl = (lmax-lmin)//bw + 1
-    elli = np.zeros(nbl, int)
-    elle = np.zeros(nbl, int)
-
-    for i in range(nbl):
-        elli[i] = lmin + i*bw
-        elle[i] = lmin + (i+1)*bw
-
+    nbl = (lmax - lmin) // bw + 1
+    elli = np.arange(lmin, lmin + nbl * bw, bw)
+    elle = elli + bw
     b = nmt.NmtBin.from_edges(elli, elle)
     return b
 
-def log_binning_old(lmax, lmin, nbl):
-    bin_edges = np.logspace(np.log10(lmin), np.log10(lmax), nbl)
-    bin_edges = np.floor(bin_edges).astype(int)
-    b = nmt.NmtBin.from_edges(bin_edges[:-1], bin_edges[1:])
-    return b
-
 def log_binning(lmax, lmin, nbl, w=None):
+    """
+    Define a logarithmic ell binning scheme with optional weights.
+
+    Parameters
+    ----------
+    lmax : int
+        Maximum ell value for the binning.
+    lmin : int
+        Minimum ell value for the binning.
+    nbl : int
+        Number of bins.
+    w : array-like, optional
+        Weights for the ell values.
+
+    Returns
+    -------
+    b : nmt.NmtBin
+        NaMaster binning object with logarithmic bins.
+    """
     op = np.log10
     inv = lambda x: 10**x
-
     bins = inv(np.linspace(op(lmin), op(lmax + 1), nbl + 1))
-    ell = np.arange(lmin, lmax+1)
-    i = np.digitize(ell, bins)-1
+    ell = np.arange(lmin, lmax + 1)
+    i = np.digitize(ell, bins) - 1
     if w is None:
         w = np.ones(ell.size)
     b = nmt.NmtBin(bpws=i, ells=ell, weights=w, lmax=lmax)
@@ -474,20 +479,6 @@ def shape_noise(tbin, fsky):
     -------
     shape_noise : float
         Shape noise estimate for the tomographic bin.
-
-    Notes
-    -----
-    - The shape noise is calculated as the variance of the sum of squared ellipticities divided by the number of galaxies.
-    - The formula is adjusted to account for the fraction of the sky surveyed.
-
-    Examples
-    --------
-    >>> tbin = {'gamma1': np.array([0.1, 0.2, 0.3]),
-    ...         'gamma2': np.array([0.2, 0.3, 0.4])}
-    >>> fsky = 0.7
-    >>> shape_noise(tbin, fsky)
-    0.001
-
     """
     ngal = tbin['gamma1'].size
     var = ((tbin['gamma1']**2 + tbin['gamma2']**2)).sum() / ngal
@@ -508,39 +499,40 @@ def shot_noise(tbin, fsky):
     -------
     shot_noise : float
         Shot noise estimate for the tomographic bin.
-
-    Notes
-    -----
-    - The shot noise is calculated as the inverse of the number density of galaxies.
-    - The formula is adjusted to account for the fraction of the sky surveyed.
-
-    Examples
-    --------
-    >>> tbin = {'dec': np.array([10, 20, 30])}
-    >>> fsky = 0.5
-    >>> shot_noise(tbin, fsky)
-    0.007853981633974483
     """
     ngal = tbin['dec'].size
     return (4 * np.pi * fsky**2) / ngal
 
 def compute_noise(tracer, tbin, fsky):
+    """
+    Compute the noise level for a specific tracer.
+
+    Parameters
+    ----------
+    tracer : str
+        Type of tracer ('D' for density or 'G' for shear).
+    tbin : dict
+        Dictionary containing tomographic bin information.
+    fsky : float
+        Fraction of the sky covered by the survey.
+
+    Returns
+    -------
+    noise : float
+        Noise level estimate for the tracer.
+    """
     if tracer == 'D':
         noise = shot_noise(tbin, fsky)
     if tracer == 'G':
         noise = shape_noise(tbin, fsky)
-
     return noise
 
-def decouple_noise(noise_array, wsp, nside, depixelate):
+def pixwin(nside, depixelate):
     """
-    Decouple the shot/shape noise power spectrum.
+    Compute the pixel window function for a given NSIDE.
 
     Parameters
     ----------
-    noise : float
-        Shot/shape noise level.
-    wsp : NaMaster workspace containing pre-computed matrices.
     nside : int
         NSIDE parameter for the Healpix maps.
     depixelate : bool
@@ -548,120 +540,12 @@ def decouple_noise(noise_array, wsp, nside, depixelate):
 
     Returns
     -------
-    snl_decoupled : array-like
-        Decoupled shot/shape noise power spectrum.
-
-    Notes
-    -----
-    Shot noise is the noise inherent in a measurement due to the discrete nature of the data.
-    The shot noise power spectrum is decoupled using the provided NaMaster workspace (`wsp`)
-    and the depixelation factor determined by the `depixelate` flag.
-
-    Examples
-    --------
-    >>> noise = 0.1
-    >>> wsp = nmt.NmtWorkspace()
-    >>> nside = 64
-    >>> depixelate = True
-    >>> decouple_noise(noise, wsp, nside, depixelate)
-    array([...])
+    pixwin : array-like
+        Pixel window function. If depixelate is True, the pixel window function is squared.
     """
+    pix_dic = {True: hp.sphtfunc.pixwin(nside) ** 2, False: np.ones(3 * nside)}
+    return pix_dic[depixelate]
 
-    i_lmax = noise_array.shape[1]
-
-    snl = noise_array / pixwin(nside, depixelate)[:i_lmax]
-    snl_decoupled = wsp.decouple_cell(snl)[0]
-
-    return snl_decoupled
-
-def couple_noise(noise_array, wsp, bnmt, fsky, nside, depixelate):
-
-    # Not sure why but the debiasing agrees better with the one from
-    # Heracles for WL like this...
-
-    i_lmax = noise_array.shape[1]
-
-    snl = noise_array / pixwin(nside, depixelate)[:i_lmax]
-    # snl_coupled = wsp.couple_cell(snl)[0]
-    snl_coupled = wsp.decouple_cell(snl)[0]*fsky
-
-    # Bin the coupled noise
-    # snl_coupled = bnmt.bin_cell(snl_coupled)[0]/fsky
-
-    return snl_coupled
-
-def debias(cl, noise, wsp, bnmt, fsky, nside, debias_bool, depixelate_bool, decouple_bool):
-    """
-    Debiases the angular power spectrum estimate by subtracting the decoupled noise.
-
-    Parameters
-    ----------
-    cl : array-like
-        Array containing the angular power spectrum estimate.
-    noise : float
-        Noise level estimate.
-    w : object
-        NaMaster workspace containing pre-computed matrices.
-    nside : int
-        NSIDE parameter for the Healpix maps.
-    debias_bool : bool
-        Boolean indicating whether to debias the spectrum.
-    depixelate_bool : bool
-        Boolean indicating whether to account for pixel window effects.
-
-    Returns
-    -------
-    debiased_cl : array-like
-        Debiased angular power spectrum estimate.
-
-    Notes
-    -----
-    - If `debias_bool` is True, the decoupled noise is subtracted from the angular power spectrum.
-    - The noise level estimate is used to compute the decoupled noise.
-    - The pixel window effect is accounted for if `depixelate_bool` is True.
-
-    Examples
-    --------
-    >>> cl = np.array([0.1, 0.2, 0.3])
-    >>> noise = 0.05
-    >>> w = nmt.NmtWorkspace()
-    >>> nside = 64
-    >>> debias_bool = True
-    >>> depixelate_bool = True
-    >>> debias(cl, noise, w, nside, debias_bool, depixelate_bool)
-    array([0.09451773, 0.19451773, 0.29451773])
-    """
-
-    if debias_bool:
-
-        lmax = wsp.wsp.bin.ell_max
-        array_shape = wsp.get_bandpower_windows().shape[0]
-
-        if array_shape == 1:
-            noise_array = np.array([np.full(lmax+1, noise)])
-
-        elif array_shape == 2:
-            noise_array = np.array([np.full(lmax+1, noise),
-                                    np.zeros(lmax+1)])
-        elif array_shape == 4:
-            noise_array = np.array([np.full(lmax+1, noise),
-                                    np.zeros(lmax+1),
-                                    np.zeros(lmax+1),
-                                    np.zeros(lmax+1)])
-
-        else :
-            raise ValueError(f"Mixing matrix has weird shape ({array_shape})"
-                             "It should be 1, 2 or 4")
-
-        if decouple_bool:
-            cl -= decouple_noise(noise_array, wsp, nside, depixelate_bool)
-
-        else :
-            cl -= couple_noise(noise_array, wsp, bnmt, fsky, nside, depixelate_bool)
-
-    return cl
-
-def pixwin(nside, depixelate):
     """
     Compute the pixel window function for a given NSIDE.
 
@@ -695,6 +579,7 @@ def pixwin(nside, depixelate):
     return pix_dic[depixelate]
 
 #---- Saving ----#
+
 def save_twopoint(cls_dic, bnmt, nofz_dic, ngal_dic, zbins, probes, cross, outname):
     """
     Save the angular power spectra and number density data to a TwoPoint FITS file.
@@ -705,9 +590,9 @@ def save_twopoint(cls_dic, bnmt, nofz_dic, ngal_dic, zbins, probes, cross, outna
         Dictionary containing the angular power spectra estimates.
     bnmt : object
         NaMaster binning object.
-    nofz_dic : dic of array-like
+    nofz_dic : dict of array-like
         Array containing the redshifts and the n(z) for each bin.
-    ngal_dic : dic of int or list of array-like
+    ngal_dic : dict of int or list of array-like
         Number density of galaxies.
     zbins : array-like
         Array containing the indices of redshift bins.
@@ -717,24 +602,6 @@ def save_twopoint(cls_dic, bnmt, nofz_dic, ngal_dic, zbins, probes, cross, outna
         Boolean indicating whether cross-correlations are computed.
     outname : str
         Output filename for the TwoPoint FITS file.
-
-    Notes
-    -----
-    - The number density data is formatted from `nofz` and `ngal`.
-    - The angular power spectra are formatted for each probe using `format_spectra_twopoint`.
-    - All data is saved to a TwoPoint FITS file using the `to_fits` method.
-
-    Examples
-    --------
-    >>> cls_dic = {'D0-D0': np.array([0.1, 0.2, 0.3]), 'D0-D1': np.array([0.2, 0.3, 0.4])}
-    >>> bnmt = nmt.NmtBin.from_edges([0, 100, 200], [100, 200, 300])
-    >>> nofz = (np.array([0.5, 1.0]), np.array([1.0, 2.0]))
-    >>> ngal = 100
-    >>> zbins = [0, 1]
-    >>> probes = ['GC']
-    >>> cross = False
-    >>> outname = 'twopoint.fits'
-    >>> save_twopoint(cls_dic, bnmt, nofz, ngal, zbins, probes, cross, outname)
     """
     # format n(z)
     kernels = []
@@ -785,24 +652,7 @@ def format_spectra_twopoint(cls_dic, bnmt, probe, cross, zbins):
     -------
     spectrum : object
         SpectrumMeasurement object containing the formatted spectra.
-
-    Notes
-    -----
-    - The formatted spectra are constructed as a SpectrumMeasurement object.
-    - The angular power spectra estimates are retrieved from `cls_dic`.
-    - Redshift bin indices are used to identify the bins in the spectra.
-
-    Examples
-    --------
-    >>> cls_dic = {'D0-D0': np.array([0.1, 0.2, 0.3]), 'D0-D1': np.array([0.2, 0.3, 0.4])}
-    >>> bnmt = nmt.NmtBin.from_edges([0, 100, 200], [100, 200, 300])
-    >>> probe = 'GC'
-    >>> cross = False
-    >>> zbins = [0, 1]
-    >>> format_spectra_twopoint(cls_dic, bnmt, probe, cross, zbins)
-    <twopoint.core.SpectrumMeasurement object at ...>
     """
-
     # format ell binning
     ell = bnmt.get_effective_ells()
     nell = ell.size
@@ -891,20 +741,6 @@ def get_iter(probe, cross, zbins):
     -------
     iterator : iterator
         Iterator yielding pairs of bin labels.
-
-    Notes
-    -----
-    - The function constructs a dictionary `keymap` mapping probe types to bin labels.
-    - Based on the cross-correlation flag, it selects the appropriate iterator method.
-    - The resulting iterator provides bin pairs for the specified probe type and cross-correlation flag.
-
-    Examples
-    --------
-    >>> probe = 'GC'
-    >>> cross = ['GC']
-    >>> zbins = [0, 1, 2]
-    >>> get_iter(probe, cross, zbins)
-    <itertools.combinations_with_replacement object at ...>
     """
     keymap = {'GC': ['D{}'.format(i+1) for i in zbins],
               'WL': ['G{}'.format(i+1) for i in zbins],
@@ -940,20 +776,6 @@ def get_iter_nokeymap(probe, cross, zbins):
     -------
     iterator : iterator
         Iterator yielding pairs of bin labels.
-
-    Notes
-    -----
-    - The function constructs a dictionary `keymap` mapping probe types to bin labels.
-    - Based on the cross-correlation flag, it selects the appropriate iterator method.
-    - The resulting iterator provides bin pairs for the specified probe type and cross-correlation flag.
-
-    Examples
-    --------
-    >>> probe = 'GC'
-    >>> cross = ['GC']
-    >>> zbins = [0, 1, 2]
-    >>> get_iter(probe, cross, zbins)
-    <itertools.combinations_with_replacement object at ...>
     """
     keymap = {'GC': ['{}'.format(i+1) for i in zbins],
               'WL': ['{}'.format(i+1) for i in zbins],
@@ -975,6 +797,25 @@ def get_iter_nokeymap(probe, cross, zbins):
 #---- Workspaces ----#
 
 def create_workspaces(bin_scheme, mask, wkspce_name, probe):
+    """
+    Create workspaces for computing coupling matrices based on the probe type.
+
+    Parameters
+    ----------
+    bin_scheme : nmt_bins
+        A binning scheme object defining the bins for the coupling matrix.
+    mask : nmt_field
+        A mask object defining the regions of the sky to include in the computation.
+    wkspce_name : str
+        The filename for storing or retrieving the computed workspace.
+    probe : str
+        Probe type ('GC', 'WL', or 'GGL').
+
+    Returns
+    -------
+    nmt_workspace
+        Workspace object containing the computed coupling matrix.
+    """
     spin_probe_dic = {
         'GC'  : (0,0),
         'WL'  : (2,2),
@@ -984,46 +825,25 @@ def create_workspaces(bin_scheme, mask, wkspce_name, probe):
 
 def coupling_matrix(bin_scheme, mask, wkspce_name, spin1, spin2):
     """
-    Compute the mixing matrix for coupling spherical harmonic modes using
-    the provided binning scheme and mask.
+    Compute the coupling matrix for spherical harmonic modes using a binning scheme and mask.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     bin_scheme : nmt_bins
         A binning scheme object defining the bins for the coupling matrix.
-
     mask : nmt_field
         A mask object defining the regions of the sky to include in the computation.
-
     wkspce_name : str
-        The file name for storing or retrieving the computed workspace containing
-        the coupling matrix.
+        The filename for storing or retrieving the computed workspace.
+    spin1 : int
+        Spin of the first field.
+    spin2 : int
+        Spin of the second field.
 
-    Returns:
-    --------
+    Returns
+    -------
     nmt_workspace
-        A workspace object containing the computed coupling matrix.
-
-    Notes:
-    ------
-    This function computes the coupling matrix necessary for the pseudo-Cl power
-    spectrum estimation using the NmtField and NmtWorkspace objects from the
-    Namaster library.
-
-    If the workspace file specified by 'wkspce_name' exists, the function reads
-    the coupling matrix from the file. Otherwise, it computes the matrix and
-    writes it to the file.
-
-    Example:
-    --------
-    # Generate a linear binning scheme for an NSIDE of 64, starting from l=10, with bin width of 20
-    bin_scheme = linear_lmin_binning(NSIDE=64, lmin=10, bw=20)
-
-    # Define the mask
-    mask = nmt.NmtField(mask, [mask])
-
-    # Compute the coupling matrix and store it in 'coupling_matrix.bin'
-    coupling_matrix = coupling_matrix(bin_scheme, mask, 'coupling_matrix.bin')
+        Workspace object containing the computed coupling matrix.
     """
     print('Compute the mixing matrix')
     start = time.time()
@@ -1043,7 +863,29 @@ def coupling_matrix(bin_scheme, mask, wkspce_name, spin1, spin2):
 #---- Covariance ----#
 
 def decoupled_covariance(Cl, keys, wa, wb, cov_w, nbl):
+    """
+    Compute the decoupled covariance matrix using Gaussian covariance formalism.
 
+    Parameters
+    ----------
+    Cl : dict
+        Dictionary containing power spectra.
+    keys : list
+        List of correlation keys.
+    wa : nmt_workspace
+        Workspace object for one of the correlations.
+    wb : nmt_workspace
+        Workspace object for another correlation.
+    cov_w : object
+        Covariance workspace object.
+    nbl : int
+        Number of bins.
+
+    Returns
+    -------
+    covmat : ndarray
+        Decoupled covariance matrix.
+    """
     ncl = len(keys)
     covmat = np.zeros((ncl*nbl, ncl*nbl))
 
@@ -1064,7 +906,31 @@ def decoupled_covariance(Cl, keys, wa, wb, cov_w, nbl):
     return covmat
 
 def coupled_covariance(Cl, keys, wa, wb, cov_w, nbl, weights=None):
+    """
+    Compute the coupled covariance matrix using Gaussian covariance formalism.
 
+    Parameters
+    ----------
+    Cl : dict
+        Dictionary containing power spectra.
+    keys : list
+        List of correlation keys.
+    wa : nmt_workspace
+        Workspace object for one of the correlations.
+    wb : nmt_workspace
+        Workspace object for another correlation.
+    cov_w : object
+        Covariance workspace object.
+    nbl : int
+        Number of bins.
+    weights : ndarray, optional
+        Weights for covariance binning.
+
+    Returns
+    -------
+    covmat : ndarray
+        Coupled covariance matrix.
+    """
     assert wa.wsp.lmax == wb.wsp.lmax, 'The lmax from the two workspace is different.'
 
     ncl = len(keys)
@@ -1093,7 +959,23 @@ def coupled_covariance(Cl, keys, wa, wb, cov_w, nbl, weights=None):
     return covmat
 
 def covariance_binning_sum(block_unbinned, workspace, weights=None):
+    """
+    Bin an unbinned covariance matrix using the provided workspace.
 
+    Parameters
+    ----------
+    block_unbinned : ndarray
+        Unbinned covariance matrix.
+    workspace : nmt_workspace
+        Workspace object for binning.
+    weights : ndarray, optional
+        Weights for binning.
+
+    Returns
+    -------
+    binned_block : ndarray
+        Binned covariance matrix.
+    """
     if weights != None:
         raise ValueError('Weights are not yet implemented in the covariance binning !')
 
@@ -1125,6 +1007,19 @@ def covariance_binning_sum(block_unbinned, workspace, weights=None):
 
 #---- Utils ----#
 def probe_ref_mapping(probe):
+    """
+    Map probe types to reference names.
+
+    Parameters
+    ----------
+    probe : str
+        Probe type ('GC', 'WL', or 'GGL').
+
+    Returns
+    -------
+    mapping : str
+        Reference name corresponding to the probe type.
+    """
     mapping = {
         'GC' : 'galaxy_cl',
         'WL' : 'shear_cl',

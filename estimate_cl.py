@@ -76,7 +76,7 @@ if not maps['load_maps']:
     #-- Redshift binning
     if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
         print(probe_selection['probes'])
-        tomo_bins_lens, ngal_bins_lens = al.create_redshift_bins_complete(in_out['catalog_lens'],
+        tomo_bins_lens, ngal_bins_lens = al.create_redshift_bins(in_out['catalog_lens'],
                                                     columns_lens,
                                                     z_binning['selected_bins'],
                                                     'lens',
@@ -89,7 +89,7 @@ if not maps['load_maps']:
 
     if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
         print(probe_selection['probes'])
-        tomo_bins_source, ngal_bins_source = al.create_redshift_bins_complete(in_out['catalog_source'],
+        tomo_bins_source, ngal_bins_source = al.create_redshift_bins(in_out['catalog_source'],
                                                     columns_source,
                                                     z_binning['selected_bins'],
                                                     'source',

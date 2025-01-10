@@ -4,7 +4,7 @@ import healpy as hp
 
 import anglib as al
 import general_libraries.cov_utils as cu
-import general_libraries.loading
+import general_libraries.loading as loading
 
 import sys
 import itertools
