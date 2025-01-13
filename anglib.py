@@ -527,6 +527,148 @@ def compute_noise(tracer, tbin, fsky):
         noise = shape_noise(tbin, fsky)
     return noise
 
+def decouple_noise(noise_array, wsp, nside, depixelate):
+    """
+    Decouples the noise power spectrum using a NaMaster workspace.
+
+    Parameters
+    ----------
+    noise_array : array-like
+        Array representing the noise power spectrum for each mode.
+        The shape must be consistent with the expected input for the NaMaster workspace.
+    wsp : nmt.NmtWorkspace
+        NaMaster workspace containing precomputed coupling matrices for decoupling.
+    nside : int
+        HEALPix NSIDE parameter for the maps.
+    depixelate : bool
+        If True, squares the pixel window function to account for pixelation effects.
+
+    Returns
+    -------
+    snl_decoupled : array-like
+        The decoupled noise power spectrum, corrected for pixelation effects if specified.
+
+    """
+
+    i_lmax = noise_array.shape[1]
+
+    snl = noise_array / pixwin(nside, depixelate)[:i_lmax]
+    snl_decoupled = wsp.decouple_cell(snl)[0]
+
+    return snl_decoupled
+
+def couple_noise(noise_array, wsp, bnmt, fsky, nside, depixelate):
+    """
+    Couples the noise power spectrum using a NaMaster workspace and applies sky fraction scaling.
+
+    Parameters
+    ----------
+    noise_array : array-like
+        Array representing the noise power spectrum for each mode.
+    wsp : nmt.NmtWorkspace
+        NaMaster workspace containing precomputed coupling matrices.
+    bnmt : object
+        Binning scheme used to bin the coupled noise (if applicable).
+    fsky : float
+        Sky fraction covered by the mask, used for scaling the coupled noise.
+    nside : int
+        HEALPix NSIDE parameter for the maps.
+    depixelate : bool
+        If True, squares the pixel window function to account for pixelation effects.
+
+    Returns
+    -------
+    snl_coupled : array-like
+        The coupled noise power spectrum, scaled by the sky fraction and optionally binned.
+
+    """
+
+    # Not sure why but the debiasing agrees better with the one from
+    # Heracles for WL like this...
+
+    i_lmax = noise_array.shape[1]
+
+    snl = noise_array / pixwin(nside, depixelate)[:i_lmax]
+    # snl_coupled = wsp.couple_cell(snl)[0]
+    snl_coupled = wsp.decouple_cell(snl)[0]*fsky
+
+    # Bin the coupled noise
+    # snl_coupled = bnmt.bin_cell(snl_coupled)[0]/fsky
+
+    return snl_coupled
+
+def debias(cl, noise, wsp, bnmt, fsky, nside, debias_bool, depixelate_bool, decouple_bool):
+    """
+    Removes noise bias from the angular power spectrum estimate.
+
+    Parameters
+    ----------
+    cl : array-like
+        Angular power spectrum estimate to be debiased.
+    noise : float
+        Noise level estimate, assumed constant across multipoles.
+    wsp : nmt.NmtWorkspace
+        NaMaster workspace object containing precomputed mixing matrices.
+    bnmt : object
+        Binning scheme used for the angular power spectrum (e.g., linear or logarithmic).
+    fsky : float
+        Sky fraction covered by the mask.
+    nside : int
+        HEALPix NSIDE parameter of the maps.
+    debias_bool : bool
+        If True, the noise bias is subtracted from the spectrum.
+    depixelate_bool : bool
+        If True, accounts for the pixel window effect in the noise subtraction.
+    decouple_bool : bool
+        If True, performs noise subtraction in decoupled space; otherwise, in coupled space.
+
+    Returns
+    -------
+    cl : array-like
+        Debiased angular power spectrum estimate.
+
+    Raises
+    ------
+    ValueError
+        If the shape of the mixing matrix in `wsp` is not 1, 2, or 4.
+
+    Notes
+    -----
+    - The noise bias is estimated based on the input `noise` level and the NaMaster workspace (`wsp`).
+    - Depending on `decouple_bool`, noise subtraction is performed in either decoupled or coupled space.
+    - If `depixelate_bool` is True, pixel window effects are accounted for during noise subtraction.
+
+    """
+
+    if debias_bool:
+
+        lmax = wsp.wsp.bin.ell_max
+        array_shape = wsp.get_bandpower_windows().shape[0]
+
+        if array_shape == 1:
+            noise_array = np.array([np.full(lmax+1, noise)])
+
+        elif array_shape == 2:
+            noise_array = np.array([np.full(lmax+1, noise),
+                                    np.zeros(lmax+1)])
+        elif array_shape == 4:
+            noise_array = np.array([np.full(lmax+1, noise),
+                                    np.zeros(lmax+1),
+                                    np.zeros(lmax+1),
+                                    np.zeros(lmax+1)])
+
+        else :
+            raise ValueError(f"Mixing matrix has weird shape ({array_shape})"
+                             "It should be 1, 2 or 4")
+
+        if decouple_bool:
+            cl -= decouple_noise(noise_array, wsp, nside, depixelate_bool)
+
+        else :
+            cl -= couple_noise(noise_array, wsp, bnmt, fsky, nside, depixelate_bool)
+
+    return cl
+
 def pixwin(nside, depixelate):
     """
     Compute the pixel window function for a given NSIDE.
