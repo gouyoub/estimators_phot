@@ -22,7 +22,7 @@ import twopoint
 from statsmodels.stats.weightstats import DescrStatsW
 
 
-import general_libraries.string_manager as stma
+from general import mysplit
 
 
 
@@ -675,8 +675,8 @@ def format_spectra_twopoint(cls_dic, bnmt, probe, cross, zbins):
     # fill lists of info and quantities
     probe_iter = get_iter(probe, cross, zbins)
     for pi, pj in probe_iter:
-        _, i = stma.mysplit(pi)
-        _, j = stma.mysplit(pj)
+        _, i = mysplit(pi)
+        _, j = mysplit(pj)
         bin1.append(np.repeat(int(i), nell))
         bin2.append(np.repeat(int(j), nell))
         multipole.append(ell)

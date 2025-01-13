@@ -3,8 +3,9 @@ import pymaster as nmt
 import healpy as hp
 
 import anglib as al
-import general_libraries.cov_utils as cu
-import general_libraries.loading as loading
+from general import pos_def
+from general import load_it
+from general import get_cosmosis_Cl
 
 import sys
 import itertools
@@ -22,9 +23,9 @@ for sec in config.sections():
     print('')
 
 # -- Arguments
-filenames = loading.load_it(config._sections['filenames'])
-probe_selection = loading.load_it(config._sections['probe_selection'])
-noise = loading.load_it(config._sections['noise'])
+filenames = load_it(config._sections['filenames'])
+probe_selection = load_it(config._sections['probe_selection'])
+noise = load_it(config._sections['noise'])
 mask_fits = filenames['mask']
 ref_cell = filenames['cell']
 workspace_fits = filenames['workspace']
@@ -52,17 +53,17 @@ keys_all = []
 
 if len(probe)>1 or probe == ['GGL']:
     for p in ['GC', 'GGL', 'WL']:
-        Cl_temp, keys_all_temp = loading.get_cosmosis_Cl(ref_cell, nzbins, p, True)
+        Cl_temp, keys_all_temp = get_cosmosis_Cl(ref_cell, nzbins, p, True)
         Cl.update(Cl_temp)
         keys_all += keys_all_temp
     for (p,c) in zip(probe, cross):
-        _, keys_temp = loading.get_cosmosis_Cl(ref_cell, nzbins, p, c)
+        _, keys_temp = get_cosmosis_Cl(ref_cell, nzbins, p, c)
         keys += keys_temp
 else:
-    Cl_temp, keys_all_temp = loading.get_cosmosis_Cl(ref_cell, nzbins, probe[0], True)
+    Cl_temp, keys_all_temp = get_cosmosis_Cl(ref_cell, nzbins, probe[0], True)
     Cl.update(Cl_temp)
     keys_all += keys_all_temp
-    _, keys_temp = loading.get_cosmosis_Cl(ref_cell, nzbins, probe[0], cross[0])
+    _, keys_temp = get_cosmosis_Cl(ref_cell, nzbins, probe[0], cross[0])
     keys += keys_temp
 
 print('Get Cl took ', time.time()-start, 's', flush=True)
@@ -85,7 +86,7 @@ assert Cl[keys[0]].size >= workspace.wsp.lmax_mask+1, 'Cls have wrong lenght. It
 arcmin2deg = ((180/np.pi)**2)*3600
 if add_noise:
     for p in [p for p in probe if p != "GGL"]:
-        _, keys_auto = loading.get_cosmosis_Cl(ref_cell, nzbins, p, False)
+        _, keys_auto = get_cosmosis_Cl(ref_cell, nzbins, p, False)
         for zi,k in enumerate(keys_auto):
             noise_term = 1/(ng_density[zi]*arcmin2deg)
             if p == 'WL': noise_term *= (sigma_e_tot[zi]**2)/2.
@@ -114,4 +115,4 @@ print('constructing the matrix took ', time.time() - start, 's', flush=True)
 # -- Save the covariance matrix
 np.save(output_name, covmat)
 
-cu.pos_def(covmat, 'This covariance matrix')
+pos_def(covmat, 'This covariance matrix')
