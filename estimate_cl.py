@@ -1,10 +1,20 @@
 """
 script: estimate_cl
 
-Script to estimate the angular power spectrum for a given catalog
-in the CosmoHUB format. For now only the GCph Cl can be estimated.
-The outuput should be the one used by CosmoSIS: the 2PT.fits
-format.
+Author: Sylvain Gouyou Beauchamps
+
+Script to estimate the angular power spectrum for a given catalog of source
+and lenses using NaMaster.
+
+The script is executed by passing the configuration file as the first argument.
+
+Example:
+   python script_name.py config_file.ini
+
+Output:
+- Angular power spectra (Cl’s) stored in either Numpy or FITS format.
+- Computed maps, noise models, and galaxy distributions stored in Numpy files.
+
 """
 
 import numpy as np
@@ -72,6 +82,7 @@ if apodization['apodize']:
 if nside != hp.npix2nside(mask.size):
     raise ValueError(f"The input nside and the mask are not consistent !")
 
+#-- Tomographic binning + Generate maps if not directly loaded
 if not maps['load_maps']:
     #-- Redshift binning
     if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
@@ -85,7 +96,7 @@ if not maps['load_maps']:
                                                     z_binning['zmin'],
                                                     z_binning['zmax'],
                                                     z_binning['nztot'])
-        ngal_arcmin_lens = (ngal_bins_lens/(4*np.pi*fsky**2))/(((180/np.pi)**2)*3600)
+        ngal_arcmin_lens = (ngal_bins_lens/(4*np.pi*fsky))/(((180/np.pi)**2)*3600)
 
     if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
         print(probe_selection['probes'])
@@ -98,7 +109,7 @@ if not maps['load_maps']:
                                                     z_binning['zmin'],
                                                     z_binning['zmax'],
                                                     z_binning['nztot'])
-        ngal_arcmin_source = (ngal_bins_source/(4*np.pi*fsky**2))/(((180/np.pi)**2)*3600)
+        ngal_arcmin_source = (ngal_bins_source/(4*np.pi*fsky))/(((180/np.pi)**2)*3600)
 
     #-- Build n(z)
     nofz_out_fname = f"{ref_out_fname}_nofz"
@@ -138,6 +149,7 @@ if not maps['load_maps']:
             maps_dic[f"{k}{izb+1}"] = map(tomo_bins[i], nside, mask)
             noise_dic[f"{k}{izb+1}"] = al.compute_noise(k, tomo_bins[i], fsky)
 
+#-- Load maps, nofz, noise if asked
 else :
     print("\nThe maps, noise, nofz and ngal will be loaded from external files")
     maps_noise_dic = np.load(in_out['maps_noise_name'], allow_pickle=True).item()
@@ -147,7 +159,7 @@ else :
     nofz_dic = np.load(in_out['nofz_name'], allow_pickle=True).item()
     ngal_dic = np.load(in_out['ngal_name'], allow_pickle=True).item()
 
-#-- Save maps and associated noise
+#-- Save maps and associated noise if asked
 if maps['save_maps']:
     print("\nSaving the maps and noise")
     maps_noise_out_fname = f"{ref_out_fname}_maps_noise_NS{nside}.npy"
@@ -160,6 +172,9 @@ if ell_binning['ell_binning'] == 'lin':
 
 elif ell_binning['ell_binning'] == 'log':
     bnmt = al.log_binning(ell_binning['lmax'], ell_binning['lmin'], ell_binning['nell'])
+
+else:
+    raise ValueError(f"ell_binning must be 'lin' or 'log'")
 
 #-- Define nmt workspace only with the mask
 print('\nGetting the mask and computing the mixing matrices ')
@@ -182,7 +197,7 @@ for probe in probe_selection['probes']:
 print('\n',time.time()-start,'s to compute the coupling matrices')
 
 #-- Cl computation loop
-cls_dic  = OrderedDict() # To store the cl to be saved in a fit file
+cls_dic  = OrderedDict() # To store the cl to be saved in a fits file
 for probe in probe_selection['probes']:
     print(f"\nFor probe {probe}")
     for pa, pb in al.get_iter(probe, probe_selection['cross'], z_binning['selected_bins']):
@@ -198,7 +213,7 @@ for probe in probe_selection['probes']:
         else:
             cl = al.compute_coupled(fld_a, fld_b, bnmt, nside, maps['depixelate'])
 
-        # Remove noise bias from auto correlation if wanted
+        # Remove noise bias from auto correlation if asked
         if pa == pb:
             cl = al.debias(cl, noise_dic[pa], w_dic[probe], bnmt, fsky, nside,
                            noise['debias'], maps['depixelate'], spectra['decoupling'])
