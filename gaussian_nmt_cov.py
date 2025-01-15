@@ -42,6 +42,7 @@ sigma_e_tot = noise['sigma_e_tot']
 # - Get the mask and make it a field
 start = time.time()
 mask = hp.read_map(mask_fits)
+fsky = np.mean(mask)
 fmask = nmt.NmtField(mask, [mask])
 print('Get mask took ', time.time()-start, 's', flush=True)
 
@@ -80,7 +81,7 @@ nell = workspace.get_bandpower_windows().shape[1]
 print('Get workspace took ', time.time()-start, 's', flush=True)
 
 # Check shape of Cl's for given workspace
-assert Cl[keys[0]].size >= workspace.wsp.lmax_mask+1, 'Cls have wrong lenght. It should be at least lmax*3+1'
+assert Cl[keys[0]].size >= workspace.wsp.lmax_mask+1, 'Cls have wrong length. It should be at least lmax*3+1'
 
 # -- Add noise term
 arcmin2deg = ((180/np.pi)**2)*3600
@@ -89,6 +90,7 @@ if add_noise:
         _, keys_auto = get_cosmosis_Cl(ref_cell, nzbins, p, False)
         for zi,k in enumerate(keys_auto):
             noise_term = 1/(ng_density[zi]*arcmin2deg)
+            # noise_term = 1/((ng_density[zi]/fsky)*arcmin2deg) # The division by fsky is made to agree with the debiasing of heracles. Need to understand that.
             if p == 'WL': noise_term *= (sigma_e_tot[zi]**2)/2.
             Cl[k] += noise_term
 

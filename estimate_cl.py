@@ -69,6 +69,7 @@ if os.path.isfile(in_out['output_dir']):
 #-- Managing filenames
 print("\nCreating the output directory")
 os.mkdir(in_out['output_dir'])
+os.system(f"cp {configname} {in_out['output_dir']}") # copy inifile in the output directory
 ref_out_fname = f"{in_out['output_dir']}/{in_out['output_dir'].split('/')[-1]}"
 
 #-- Get the mask
@@ -87,7 +88,7 @@ if not maps['load_maps']:
     #-- Redshift binning
     if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
         print(probe_selection['probes'])
-        tomo_bins_lens, ngal_bins_lens = al.create_redshift_bins(in_out['catalog_lens'],
+        tomo_bins_lens, ngal_bins_lens, z_edges_lens = al.create_redshift_bins(in_out['catalog_lens'],
                                                     columns_lens,
                                                     z_binning['selected_bins'],
                                                     'lens',
@@ -100,7 +101,7 @@ if not maps['load_maps']:
 
     if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
         print(probe_selection['probes'])
-        tomo_bins_source, ngal_bins_source = al.create_redshift_bins(in_out['catalog_source'],
+        tomo_bins_source, ngal_bins_source, z_edges_source = al.create_redshift_bins(in_out['catalog_source'],
                                                     columns_source,
                                                     z_binning['selected_bins'],
                                                     'source',
@@ -114,13 +115,16 @@ if not maps['load_maps']:
     #-- Build n(z)
     nofz_out_fname = f"{ref_out_fname}_nofz"
     ngal_out_fname = f"{ref_out_fname}_ngal"
+    z_edges_out_fname = f"{ref_out_fname}_zedges"
     nofz_dic = {}
     ngal_dic = {}
-    print('\nSaving the n(z) and galaxy number density')
+    print('\nSaving the n(z), galaxy number density and z_edges')
     if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
         nofz_lens = al.build_nz(tomo_bins_lens)
         np.savetxt(nofz_out_fname+'_lens.txt', nofz_lens.T)
         np.savetxt(ngal_out_fname+'_arcmin2_lens.txt', ngal_arcmin_lens)
+        np.savetxt(z_edges_out_fname+'_lens.txt', z_edges_lens)
+
         nofz_dic['lens'] = nofz_lens
         ngal_dic['lens'] = ngal_arcmin_lens
 
@@ -128,6 +132,7 @@ if not maps['load_maps']:
         nofz_source = al.build_nz(tomo_bins_source)
         np.savetxt(nofz_out_fname+'_source.txt', nofz_source.T)
         np.savetxt(ngal_out_fname+'_arcmin2_source.txt', ngal_arcmin_source)
+        np.savetxt(z_edges_out_fname+'_source.txt', z_edges_source)
         nofz_dic['source'] = nofz_source
         ngal_dic['source'] = ngal_arcmin_source
 

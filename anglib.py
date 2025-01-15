@@ -114,6 +114,23 @@ def create_redshift_bins(file_path, columns, selected_bins, sample,
         wq = DescrStatsW(data=df[columns['zp']], weights=df[columns[weight[sample]]])
         z_edges = wq.quantile(probs=np.linspace(0,1,nbins+1), return_pandas=False)
 
+    elif division == 'EP_sharpcut_lenses':
+        print('Dividing the sample in equi-populated tomographic bins,')
+        print('sharp cutting from the weights for the lenses.')
+
+        # cut data at appropriate redshift edges
+        if sample == 'lens':
+            df = df[(df[columns['zp']] >= zmin) & (df[columns['zp']] < zmax)
+                    & (df['phz_weight'] >= 0.5)]
+        elif sample == 'source':
+            df = df[(df[columns['zp']] >= zmin) & (df[columns['zp']] < zmax)]
+
+        # define redshift edges for binning
+        weight = {'source':'she_weight',
+                  'lens':'phz_weight'}
+        wq = DescrStatsW(data=df[columns['zp']])
+        z_edges = wq.quantile(probs=np.linspace(0,1,nbins+1), return_pandas=False)
+
     # do the actual division in tomographic bins
     tomo_bins = []
     ngal_bin = []
@@ -135,7 +152,7 @@ def create_redshift_bins(file_path, columns, selected_bins, sample,
 
         tomo_bins.append(tbin)
 
-    return tomo_bins, ngal_bin
+    return tomo_bins, ngal_bin, z_edges
 
 def build_nz(tbin, nb=400, nz=1000):
     """
