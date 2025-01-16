@@ -499,7 +499,7 @@ def shape_noise(tbin, fsky):
     """
     ngal = tbin['gamma1'].size
     var = ((tbin['gamma1']**2 + tbin['gamma2']**2)).sum() / ngal
-    return var * (2 * np.pi * fsky**2) / ngal
+    return var * (2 * np.pi * fsky) / ngal
 
 def shot_noise(tbin, fsky):
     """
@@ -518,7 +518,7 @@ def shot_noise(tbin, fsky):
         Shot noise estimate for the tomographic bin.
     """
     ngal = tbin['dec'].size
-    return (4 * np.pi * fsky**2) / ngal
+    return (4 * np.pi * fsky) / ngal
 
 def compute_noise(tracer, tbin, fsky):
     """
@@ -544,7 +544,7 @@ def compute_noise(tracer, tbin, fsky):
         noise = shape_noise(tbin, fsky)
     return noise
 
-def decouple_noise(noise_array, wsp, nside, depixelate):
+def decouple_noise(noise_array, wsp, fsky, nside, depixelate):
     """
     Decouples the noise power spectrum using a NaMaster workspace.
 
@@ -570,7 +570,7 @@ def decouple_noise(noise_array, wsp, nside, depixelate):
     i_lmax = noise_array.shape[1]
 
     snl = noise_array / pixwin(nside, depixelate)[:i_lmax]
-    snl_decoupled = wsp.decouple_cell(snl)[0]
+    snl_decoupled = wsp.decouple_cell(snl)[0]*fsky # multiplying by fsky to compensate the decoupling
 
     return snl_decoupled
 
@@ -607,7 +607,8 @@ def couple_noise(noise_array, wsp, bnmt, fsky, nside, depixelate):
 
     snl = noise_array / pixwin(nside, depixelate)[:i_lmax]
     # snl_coupled = wsp.couple_cell(snl)[0]
-    snl_coupled = wsp.decouple_cell(snl)[0]*fsky
+    snl_coupled = wsp.decouple_cell(snl)[0]*fsky**2 # multiplying by fsky to compensate the decoupling
+                                                    # and another time to account for the coupling of the Cl's
 
     # Bin the coupled noise
     # snl_coupled = bnmt.bin_cell(snl_coupled)[0]/fsky
@@ -679,7 +680,7 @@ def debias(cl, noise, wsp, bnmt, fsky, nside, debias_bool, depixelate_bool, deco
                              "It should be 1, 2 or 4")
 
         if decouple_bool:
-            cl -= decouple_noise(noise_array, wsp, nside, depixelate_bool)
+            cl -= decouple_noise(noise_array, wsp, fsky, nside, depixelate_bool)
 
         else :
             cl -= couple_noise(noise_array, wsp, bnmt, fsky, nside, depixelate_bool)

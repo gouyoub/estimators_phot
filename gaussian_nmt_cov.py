@@ -90,7 +90,6 @@ if add_noise:
         _, keys_auto = get_cosmosis_Cl(ref_cell, nzbins, p, False)
         for zi,k in enumerate(keys_auto):
             noise_term = 1/(ng_density[zi]*arcmin2deg)
-            # noise_term = 1/((ng_density[zi]/fsky)*arcmin2deg) # The division by fsky is made to agree with the debiasing of heracles. Need to understand that.
             if p == 'WL': noise_term *= (sigma_e_tot[zi]**2)/2.
             Cl[k] += noise_term
 
