@@ -1061,7 +1061,8 @@ def decoupled_covariance(Cl, keys, wa, wb, cov_w, nbl):
                                     [Cl['-'.join([probeA, probeD])]],
                                     [Cl['-'.join([probeB, probeD])]],
                                     wa, wb=wb, coupled=False)
-    covmat = covmat + covmat.T - np.diag(covmat.diagonal())
+        covmat[idx2*nbl:(idx2+1)*nbl, idx1*nbl:(idx1+1)*nbl] =\
+            covmat[idx1*nbl:(idx1+1)*nbl, idx2*nbl:(idx2+1)*nbl]
 
     return covmat
 
@@ -1113,8 +1114,8 @@ def coupled_covariance(Cl, keys, wa, wb, cov_w, nbl, weights=None):
         # bin each block
         covmat[idx1*nbl:(idx1+1)*nbl, idx2*nbl:(idx2+1)*nbl] =\
             covariance_binning_sum(unbinned_block, wa, weights=None)
-
-    covmat = covmat + covmat.T - np.diag(covmat.diagonal())
+        covmat[idx2*nbl:(idx2+1)*nbl, idx1*nbl:(idx1+1)*nbl] =\
+            covmat[idx1*nbl:(idx1+1)*nbl, idx2*nbl:(idx2+1)*nbl]
 
     return covmat
 

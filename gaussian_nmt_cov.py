@@ -42,8 +42,7 @@ sigma_e_tot = noise['sigma_e_tot']
 # - Get the mask and make it a field
 start = time.time()
 mask = hp.read_map(mask_fits)
-fsky = np.mean(mask)
-fmask = nmt.NmtField(mask, [mask])
+fmask = nmt.NmtField(mask, None, spin=0)
 print('Get mask took ', time.time()-start, 's', flush=True)
 
 # - Get the Cls
@@ -89,14 +88,16 @@ if add_noise:
     for p in [p for p in probe if p != "GGL"]:
         _, keys_auto = get_cosmosis_Cl(ref_cell, nzbins, p, False)
         for zi,k in enumerate(keys_auto):
-            noise_term = 1/(ng_density[zi]*arcmin2deg)
-            if p == 'WL': noise_term *= (sigma_e_tot[zi]**2)/2.
+            if p == 'GC':
+                noise_term = 1/(ng_density[zi]*arcmin2deg)
+            elif p == 'WL':
+                noise_term = ((sigma_e_tot[zi]**2)/2.)/(ng_shear[zi]*arcmin2deg)
             Cl[k] += noise_term
 
 # -- Initialise covariance workspace
 start = time.time()
 cov_workspace = nmt.NmtCovarianceWorkspace()
-cov_workspace.compute_coupling_coefficients(fmask, fmask)
+cov_workspace.compute_coupling_coefficients(fmask, fmask, fmask, fmask)
 print('Get cov workspace took ', time.time()-start, 's', flush=True)
 
 # -- Get symetric Cls for permutations
