@@ -241,7 +241,7 @@ if in_out['output_format'] == 'numpy':
     # Save dictionnary to numpy file
     np.save(outname+".npy", cls_dic)
 
-if in_out['output_format'] == 'twopoint':
+elif in_out['output_format'] == 'twopoint':
     # Save to two point file
     al.save_twopoint(cls_dic,
                      bnmt,
@@ -251,6 +251,10 @@ if in_out['output_format'] == 'twopoint':
                      probe_selection['probes'],
                      probe_selection['cross'],
                      (outname+".fits"))
+
+else :
+    raise ValueError(f"The format for the C(l) output file should be numpy or twopoint")
+
 
 print('\nDONE')
 
