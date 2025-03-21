@@ -142,6 +142,7 @@ if not maps['load_maps']:
     #-- Estimate maps
     maps_dic = {}
     noise_dic = {}
+    var_shape = np.zeros(nz)
     print('\nComputing maps')
     compute_map, key_map = al.get_map_for_probes(probe_selection['probes'])
     for map, k in zip(compute_map, key_map):
@@ -151,8 +152,11 @@ if not maps['load_maps']:
                 tomo_bins = tomo_bins_lens
             if k == 'G' :
                 tomo_bins = tomo_bins_source
+                var_shape[i] = al.shape_var(tomo_bins[i])
+
             maps_dic[f"{k}{izb+1}"] = map(tomo_bins[i], nside, mask)
             noise_dic[f"{k}{izb+1}"] = al.compute_noise(k, tomo_bins[i], fsky)
+    np.savetxt(f"{ref_out_fname}_shapevar.txt", var_shape)
 
 #-- Load maps, nofz, noise if asked
 else :

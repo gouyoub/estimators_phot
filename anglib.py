@@ -253,9 +253,6 @@ def shear_map(tbin, nside, mask):
     fsky = np.mean(mask)
     nbar = ngal / npix / fsky
 
-    #- compute shape-noise
-    shapenoise = shape_noise(tbin, fsky)
-
     #- normalize the shear values
     hpmapg1 = hpmapg1/nbar
     hpmapg2 = hpmapg2/nbar
@@ -481,6 +478,11 @@ def log_binning(lmax, lmin, nbl, w=None):
 
 #---- Noise and pixels ----#
 
+def shape_var(tbin):
+    ngal = tbin['gamma1'].size
+    var = ((tbin['gamma1']**2 + tbin['gamma2']**2)).sum() / ngal
+    return var
+
 def shape_noise(tbin, fsky):
     """
     Compute the shape noise for a given tomographic bin.
@@ -498,7 +500,7 @@ def shape_noise(tbin, fsky):
         Shape noise estimate for the tomographic bin.
     """
     ngal = tbin['gamma1'].size
-    var = ((tbin['gamma1']**2 + tbin['gamma2']**2)).sum() / ngal
+    var = shape_var(tbin)
     return var * (2 * np.pi * fsky) / ngal
 
 def shot_noise(tbin, fsky):
