@@ -36,7 +36,7 @@ import pymaster as nmt
 import numpy as np
 
 # Load mask file
-mask_fname = '/Users/sgouyoub/Documents/work/euclid/cov_3x2/data/for_tjpcov_comp/udgrade1024_apo0p1_rsd2024a-time-tagged-footprint-gal-12_DR1.fits'
+mask_fname = '/Users/sgouyoub/Documents/work/euclid/nlbias/data/masks/flagship2_mask_binary_NS1024.fits'
 mask = hp.read_map(mask_fname)
 
 # Compute NSIDE from mask
@@ -45,26 +45,26 @@ print(NSIDE)
 # Generate linear binning scheme
 # binning = al.edges_log_binning(NSIDE=NSIDE, lmin=10, nbl=11)
 # binning = al.edges_binning(NSIDE=NSIDE, lmin=10, bw=50)
-# lmax=1500
-# binning = al.log_binning(lmax=lmax, lmin=10, nbl=32)
+lmax=1500
+binning = al.log_binning(lmax=lmax, lmin=10, nbl=32)
 # binning = nmt.NmtBin.from_nside_linear(NSIDE, nlb=50, is_Dell=False)
 
-lmin =  10
-lmax = 1024
-ell_bins = 32
-bpw_edges = np.logspace(np.log10(lmin), np.log10(lmax), ell_bins, dtype=int)
-binning = nmt.NmtBin.from_edges(ell_ini=bpw_edges[:-1], ell_end=bpw_edges[1:])
+# lmin =  10
+# lmax = 1024
+# ell_bins = 32
+# bpw_edges = np.logspace(np.log10(lmin), np.log10(lmax), ell_bins, dtype=int)
+# binning = nmt.NmtBin.from_edges(ell_ini=bpw_edges[:-1], ell_end=bpw_edges[1:])
 
 print(binning.get_effective_ells())
 
 # Compute coupling matrix and save to file
-w_fname = f'/Users/sgouyoub/Documents/work/euclid/cov_3x2/data/nmt_workspace/DR1_udgrade_apo0p1_NS{NSIDE}_LBINlog_LMAX{lmax}_LMIN10_NELL31_galaxy_cl.fits'
+w_fname = f'/Users/sgouyoub/Documents/work/euclid/3x2/data/nmt_workspace/FS2_octant_WL_6EP_noIA-nomag-nored-nowh_sharpcut_shapenoise_coupled_NmtWorkspace_NS{NSIDE}_LBINlog_LMAX{lmax}_LMIN10_NELL32_galaxy_cl.fits'
 w = al.coupling_matrix(binning, mask, w_fname, 0, 0)
 
 # Compute coupling matrix and save to file
-w_fname = f'/Users/sgouyoub/Documents/work/euclid/cov_3x2/data/nmt_workspace/DR1_udgrad_apo0p1_NS{NSIDE}_LBINlog_LMAX{lmax}_LMIN10_NELL31_galaxy_shear_cl.fits'
-w = al.coupling_matrix(binning, mask, w_fname, 0, 2)
+# w_fname = f'/Users/sgouyoub/Documents/work/euclid/3x2/data/nmt_workspace/30deg_apo05_NS{NSIDE}_LBINlog_LMAX{lmax}_LMIN10_NELL32_galaxy_shear_cl.fits'
+# w = al.coupling_matrix(binning, mask, w_fname, 0, 2)
 
-# Compute coupling matrix and save to file
-w_fname = f'/Users/sgouyoub/Documents/work/euclid/cov_3x2/data/nmt_workspace/DR1_udgrad_apo0p1_NS{NSIDE}_LBINlog_LMAX{lmax}_LMIN10_NELL31_shear_cl.fits'
-w = al.coupling_matrix(binning, mask, w_fname, 2, 2)
+# # Compute coupling matrix and save to file
+# w_fname = f'/Users/sgouyoub/Documents/work/euclid/3x2/data/nmt_workspace/30deg_apo05_NS{NSIDE}_LBINlog_LMAX{lmax}_LMIN10_NELL32_shear_cl.fits'
+# w = al.coupling_matrix(binning, mask, w_fname, 2, 2)

@@ -13,7 +13,7 @@ Example:
 
 Output:
 - Angular power spectra (Cl’s) stored in either Numpy or FITS format.
-- Computed maps, noise models, and galaxy distributions stored in Numpy files.
+- Computed maps, noise models, and galaxy distributions stored in Numpy files..
 
 """
 
@@ -198,9 +198,11 @@ elif ell_binning['ell_binning'] == 'log':
     w_fname_base += f"_LMIN{ell_binning['lmin']}_LMAX{ell_binning['lmax']}_NELL{ell_binning['nell']}"
 
 w_dic = {}
+w_arr_dic = {}
 for probe in probe_selection['probes']:
     w_fname = f"{w_fname_base}_{al.probe_ref_mapping(probe)}.fits"
     w_dic[probe] = al.create_workspaces(bnmt, mask, w_fname, probe)
+    w_arr_dic[probe] =  w_dic[probe].get_coupling_matrix() #Namaster WS to array
     print('w_fname : ', w_fname)
 
 print('\n',time.time()-start,'s to compute the coupling matrices')
@@ -255,6 +257,15 @@ elif in_out['output_format'] == 'twopoint':
                      probe_selection['probes'],
                      probe_selection['cross'],
                      (outname+".fits"))
+    
+elif in_out['output_format'] == 'euclidlib':
+    al.save_euclidlib(cls_dic,
+                      w_arr_dic,
+                      bnmt,
+                      z_binning['selected_bins'],
+                      probe_selection['probes'],
+                      probe_selection['cross'],
+                      (outname+"_elib.fits"))
 
 else :
     raise ValueError(f"The format for the C(l) output file should be numpy or twopoint")

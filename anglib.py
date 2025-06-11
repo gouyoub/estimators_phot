@@ -1190,3 +1190,239 @@ def probe_ref_mapping(probe):
 
     return mapping[probe]
 
+def nofz_to_euclidSGS(
+    path: str | PathLike[str],
+    z: ArrayLike,
+    nz: ArrayLike,
+    *,
+    weight_method: str = "NO_WEIGHT",
+    bin_type: str = "TOM_BIN",
+    hist: bool = False,
+) -> None:
+    """
+    This function is copied from https://github.com/euclidlib/euclidlib/blob/main/euclidlib/photo/_phz.py. Author: Nicolas Tessore 
+
+    Write n(z) data in Euclid SGS format.  Supports both distributions
+    (when *hist* is false, the default) and histograms (when *hist* is
+    true).
+    """
+
+    z = np.asanyarray(z)
+    nz = np.asanyarray(nz)
+
+    if z.ndim != 1:
+        raise ValueError("z array must be 1D")
+    if nz.ndim == 0:
+        raise ValueError("nz array must be at least 1D")
+    if not hist and z.shape[-1] == nz.shape[-1]:
+        pass
+    elif hist and z.shape[-1] == nz.shape[-1] + 1:
+        pass
+    else:
+        raise ValueError("shape mismatch between redshifts and values")
+
+    # PHZ uses a fixed binning scheme with z bins in [0, 6] and dz=0.002
+    zbinedges = np.linspace(0.0, 6.0, 3001)
+
+    # turn nz into a 2D array with NBIN rows
+    nz = nz.reshape(-1, nz.shape[-1])
+    nbin = nz.shape[0]
+
+    # create the output data in the correct format
+    out = np.empty(
+        nbin,
+        dtype=[
+            ("BIN_ID", ">i4"),
+            ("MEAN_REDSHIFT", ">f4"),
+            ("N_Z", ">f4", (3000,)),
+        ],
+    )
+
+    # set increasing bin IDs
+    out["BIN_ID"] = np.arange(1, nbin + 1)
+
+    # convert every nz into the PHZ format
+    if hist:
+        # rebin the histogram as necessary
+
+        # shorthand for the left and right z boundaries, respectively
+        zl, zr = z[:-1], z[1:]
+
+        # compute the mean redshifts
+        out["MEAN_REDSHIFT"] = np.sum((zl + zr) / 2 * nz, axis=-1) / np.sum(nz, axis=-1)
+
+        # compute resummed bin counts
+        for j, (z1, z2) in enumerate(zip(zbinedges, zbinedges[1:])):
+            frac = (np.clip(z2, zl, zr) - np.clip(z1, zl, zr)) / (zr - zl)
+            out["N_Z"][:, j] = np.dot(nz, frac)
+    else:
+        # integrate the n(z) over each histogram bin
+
+        # compute mean redshifts
+        out["MEAN_REDSHIFT"] = trapezoid(z * nz, z, axis=-1) / trapezoid(nz, z, axis=-1)
+
+        # compute the combined set of z grid points from data and binning
+        zp = np.union1d(z, zbinedges)
+
+        # integrate over each bin
+        for i in range(nbin):
+            # interpolate dndz onto the unified grid
+            nzp = np.interp(zp, z, nz[i], left=0.0, right=0.0)
+
+            # integrate the distribution over each bin
+            for j, (z1, z2) in enumerate(zip(zbinedges, zbinedges[1:])):
+                sel = (z1 <= zp) & (zp <= z2)
+                out["N_Z"][i, j] = trapezoid(nzp[sel], zp[sel])
+
+    # metadata
+    header = {
+        "WEIGHT_METHOD": weight_method,
+        "BIN_TYPE": bin_type,
+        "NBIN": nbin,
+    }
+
+    # write output data to FITS
+    with fitsio.FITS(path, "rw", clobber=True) as fits:
+        fits.write(out, extname="BIN_INFO", header=header)
+
+
+
+def cells_to_euclidSGS(dic, bnmt, zbins, probes, cross, outname):
+
+    """
+    Convert Cells to Euclid SGS format.
+
+    Parameters
+    ----------
+        Same as save_twopoint.py 
+    """
+
+    # format ell binning (we assume same ell-binning for the moment)
+    ell = bnmt.get_effective_ells()
+    nell = ell.size
+    ell_max = np.zeros((nell))
+    ell_min = np.zeros((nell))
+    for i in range(bnmt.get_effective_ells().size):
+        ell_max[i] = bnmt.get_ell_max(i)
+        ell_min[i] = bnmt.get_ell_min(i)
+
+    # Create FITS object
+    hdr = fits.Header()
+    hdr['COMMENT'] = " This is a FITS file in euclidlib format"
+    primary_hdu = fits.PrimaryHDU(header=hdr)
+    hdul = fits.HDUList([primary_hdu])
+
+    # For each probe and  bin pair append a HDUTable
+    for p in probes :
+        if (p == 'GC'):
+            tablename = 'POS-POS-'
+            array = np.zeros((len(dic['ell']), ))
+        elif (p == 'WL'):
+            tablename = 'SHE-SHE-'
+            array = np.zeros((len(dic['ell']), 2))
+        else:
+            tablename = 'POS-SHE-'
+            array = np.zeros((len(dic['ell']), 2))
+
+        probe_iter = get_iter(p, cross, zbins)
+        print('----- :', array.shape, p)
+        for pi, pj in probe_iter:
+            if (p == 'GC'):
+                array = dic['{}-{}'.format(pi,pj)]
+                c1 = fits.Column(name='ARRAY', array=array, format='D')
+                ellaxis = '(0,)'
+            else:
+                array[:,0] = dic['{}-{}'.format(pi,pj)]
+                c1 = fits.Column(name='ARRAY', array=array, format='2D')
+                ellaxis = '(1,)'
+            c2 = fits.Column(name='ELL', array=ell, format='D')
+            c3 = fits.Column(name='LOWER', array=ell_min, format='D')
+            c4 = fits.Column(name='UPPER', array=ell_max, format='D')
+            c5 = fits.Column(name='WEIGHT', array=np.ones(len(ell)), format='D')
+
+            table_hdu = fits.BinTableHDU.from_columns([c1, c2, c3, c4, c5])
+            table_hdu.name = tablename +  pi[1] + '-' + pj[1]
+            table_hdu.header['ELLAXIS'] = ellaxis
+            hdul.append(table_hdu)
+
+    hdul.writeto(outname, overwrite=True)
+    hdul.close()
+
+def mixmat_to_euclidSGS(dic, bnmt, zbins, probes, cross, outname):
+    """
+    Convert mixing matrices to Euclid SGS format. We're assuming 1 mixmat for each probe but constant in redshift bins.
+    Euclid expects one for each probe and bin pair.
+
+    Parameters
+    ----------
+        Same as save_twopoint.py 
+    """
+
+    # format ell binning (we assume same ell-binning for the moment)
+    ell = bnmt.get_effective_ells()
+    nell = ell.size
+    ell_max = np.zeros((nell))
+    ell_min = np.zeros((nell))
+    for i in range(bnmt.get_effective_ells().size):
+        ell_max[i] = bnmt.get_ell_max(i)
+        ell_min[i] = bnmt.get_ell_min(i)
+
+    # Create FITS object
+    hdr = fits.Header()
+    hdr['COMMENT'] = " This is a FITS file in euclidlib format"
+    primary_hdu = fits.PrimaryHDU(header=hdr)
+    hdul = fits.HDUList([primary_hdu])
+
+    # For each probe and  bin pair append a HDUTable
+    for p in probes :
+        if (p == 'GC'):
+            tablename = 'POS-POS-'
+            ellaxis = '(0,)'
+            array = np.zeros(dic[p].shape)
+        elif (p == 'WL'):
+            tablename = 'SHE-SHE-'
+            ellaxis = '(1,)'
+            array = np.zeros(dic[p].shape)
+        else:
+            tablename = 'POS-SHE-'
+            ellaxis = '(1,)'
+            array = np.zeros(dic[p].shape)
+
+        probe_iter = get_iter(p, cross, zbins)
+
+        for pi, pj in probe_iter:
+            c1 = fits.Column(name='ARRAY', array=array, format=str(dic[p].shape[1])+'D')
+            c2 = fits.Column(name='ELL', array=ell, format='D')
+            c3 = fits.Column(name='LOWER', array=ell_min, format='D')
+            c4 = fits.Column(name='UPPER', array=ell_max, format='D')
+            c5 = fits.Column(name='WEIGHT', array=np.ones(len(ell)), format='D')
+
+            table_hdu = fits.BinTableHDU.from_columns([c1, c2, c3, c4, c5])
+            table_hdu.name = tablename +  pi[1] + '-' + pj[1]
+            table_hdu.header['ELLAXIS'] = ellaxis
+            hdul.append(table_hdu)
+
+    hdul.writeto(outname, overwrite=True)
+    hdul.close()
+
+def save_euclidlib(cls_dic, w_dic, bnmt, nofz_dic, zbins, probes, cross, outname):
+    """
+    Save nofz's, angular spectra and mixmat to a FITS file in Euclid SGS format.
+    
+    Parameters
+    ----------
+        Same as save_twopoint.py 
+    """
+    # 3/4 files will be created 
+    outname_nz_lens = outname + '_nzlens.fits'
+    outname_nz_source = outname + '_nzsource.fits'
+    outname_cells = outname + '_cells.fits'
+    outname_mixmat = outname + '_mixmat.fits'
+
+    # FITSFILEs 1 and 2: nofz for lenses and sources (we use Nicolas's function)
+    nofz_to_euclidSGS(outname_nz_lens, nofz_dic['lens'][0], nofz_dic['lens'][1:])
+    nofz_to_euclidSGS(outname_nz_source, nofz_dic['source'][0], nofz_dic['source'][1:])
+
+    # FITSFILEs 3 and 4: cells and mixing matrix
+    cells_to_euclidSGS(cls_dic, bnmt, zbins, probes, cross, outname_cells)
+    mixmat_to_euclidSGS(w_dic,  bnmt, zbins, probes, cross, outname_mixmat)
