@@ -61,7 +61,7 @@ if maps['load_maps']:
     assert maps['save_maps'] is False, 'Maps are not saved if they are loaded.'
 
 if ell_binning['lmax'] > 3*nside:
-    raise ValueError(f"The ell max is larger than than 3 x NSIDE !")
+    raise ValueError(f"The ell max is larger than 3 x NSIDE !")
 
 if os.path.isfile(in_out['output_dir']):
     raise FileExistsError(f"This output directory already exists !")
@@ -88,55 +88,34 @@ if not maps['load_maps']:
     #-- Redshift binning
     if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
         print(probe_selection['probes'])
-        tomo_bins_lens, ngal_bins_lens, z_edges_lens = al.create_redshift_bins(in_out['catalog_lens'],
+        tomo_bins_lens, ngal_bins_lens = al.create_redshift_bins_data(in_out['catalog_lens'],
                                                     columns_lens,
                                                     z_binning['selected_bins'],
                                                     'lens',
-                                                    z_binning['division'],
-                                                    z_binning['nofz_redshift_type'],
-                                                    z_binning['zmin'],
-                                                    z_binning['zmax'],
                                                     z_binning['nztot'])
         ngal_arcmin_lens = (ngal_bins_lens/(4*np.pi*fsky))/(((180/np.pi)**2)*3600)
 
     if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
         print(probe_selection['probes'])
-        tomo_bins_source, ngal_bins_source, z_edges_source = al.create_redshift_bins(in_out['catalog_source'],
+        tomo_bins_source, ngal_bins_source = al.create_redshift_bins_data(in_out['catalog_source'],
                                                     columns_source,
                                                     z_binning['selected_bins'],
                                                     'source',
-                                                    z_binning['division'],
-                                                    z_binning['nofz_redshift_type'],
-                                                    z_binning['zmin'],
-                                                    z_binning['zmax'],
                                                     z_binning['nztot'])
         ngal_arcmin_source = (ngal_bins_source/(4*np.pi*fsky))/(((180/np.pi)**2)*3600)
 
-    #-- Build n(z)
-    nofz_out_fname = f"{ref_out_fname}_nofz"
+    #-- Save number densities
     ngal_out_fname = f"{ref_out_fname}_ngal"
-    z_edges_out_fname = f"{ref_out_fname}_zedges"
-    nofz_dic = {}
     ngal_dic = {}
     print('\nSaving the n(z), galaxy number density and z_edges')
     if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
-        nofz_lens = al.build_nz(tomo_bins_lens)
-        np.savetxt(nofz_out_fname+'_lens.txt', nofz_lens.T)
         np.savetxt(ngal_out_fname+'_arcmin2_lens.txt', ngal_arcmin_lens)
-        np.savetxt(z_edges_out_fname+'_lens.txt', z_edges_lens)
-
-        nofz_dic['lens'] = nofz_lens
         ngal_dic['lens'] = ngal_arcmin_lens
 
     if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
-        nofz_source = al.build_nz(tomo_bins_source)
-        np.savetxt(nofz_out_fname+'_source.txt', nofz_source.T)
         np.savetxt(ngal_out_fname+'_arcmin2_source.txt', ngal_arcmin_source)
-        np.savetxt(z_edges_out_fname+'_source.txt', z_edges_source)
-        nofz_dic['source'] = nofz_source
         ngal_dic['source'] = ngal_arcmin_source
 
-    np.save(nofz_out_fname+'.npy', nofz_dic)
     np.save(ngal_out_fname+'.npy', ngal_dic)
 
     #-- Estimate maps
@@ -158,15 +137,23 @@ if not maps['load_maps']:
             noise_dic[f"{k}{izb+1}"] = al.compute_noise(k, tomo_bins[i], fsky)
     np.savetxt(f"{ref_out_fname}_shapevar.txt", var_shape)
 
-#-- Load maps, nofz, noise if asked
+#-- Load maps, noise if asked
 else :
     print("\nThe maps, noise, nofz and ngal will be loaded from external files")
     maps_noise_dic = np.load(in_out['maps_noise_name'], allow_pickle=True).item()
     maps_dic = maps_noise_dic['maps']
     noise_dic = maps_noise_dic['noise']
 
-    nofz_dic = np.load(in_out['nofz_name'], allow_pickle=True).item()
     ngal_dic = np.load(in_out['ngal_name'], allow_pickle=True).item()
+
+#-- Load n(z)
+# /!\ For now just put n(z) to zeros until I figure out the format /!\
+nofz_dic = {}
+if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
+    nofz_dic['lens'] = np.zeros(3000)
+
+if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
+    nofz_dic['source'] = np.zeros(3000)
 
 #-- Save maps and associated noise if asked
 if maps['save_maps']:
@@ -257,7 +244,7 @@ elif in_out['output_format'] == 'twopoint':
                      probe_selection['probes'],
                      probe_selection['cross'],
                      (outname+".fits"))
-    
+
 elif in_out['output_format'] == 'euclidlib':
     al.save_euclidlib(cls_dic,
                       w_arr_dic,

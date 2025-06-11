@@ -28,10 +28,10 @@ from general import mysplit
 
 #---- Redshift binning ----#
 
-def create_redshift_bins(file_path, columns, selected_bins, sample,
+def create_redshift_bins_simu(file_path, columns, selected_bins, sample,
                                   division='EP_weights',
                                   nofz_redshift_type='true_redshift_gal',
-                                  zmin=0.2, zmax=2.54, nbins=13):
+                                  zmin=0.2, zmax=2.54, nbins=6):
     """
     Create redshift bins and corresponding galaxy catalogs from a FITS file
     for a specified set of bins.
@@ -139,7 +139,7 @@ def create_redshift_bins(file_path, columns, selected_bins, sample,
             raise ValueError(f"Invalid bin index: {i}. It should be in the range [0, {nbins}).")
         print('- bin {}/{}'.format(i+1, nbins))
         selection = (df[columns['zp']] >= z_edges[i]) & (df[columns['zp']] <= z_edges[i+1])
-        ngal_bin.append(df[nofz_redshift_type][selection].size)
+        ngal_bin.append(df[columns['ra']][selection].size)
 
         tbin = {
             'ra': df[columns['ra']][selection],
@@ -153,6 +153,77 @@ def create_redshift_bins(file_path, columns, selected_bins, sample,
         tomo_bins.append(tbin)
 
     return tomo_bins, ngal_bin, z_edges
+
+def create_redshift_bins_data(file_path, columns, selected_bins, sample, nbins=6):
+    """
+    Reads galaxy catalog data and extracts tomographic redshift bins for analysis.
+
+    Parameters
+    ----------
+    file_path : str
+        Path to the input FITS file containing the galaxy catalog.
+    columns : dict
+        Dictionary mapping required column names in the catalog. Expected keys include:
+        - 'ra' : Right ascension column name.
+        - 'dec' : Declination column name.
+        - 'tomo_bin_id' : Column indicating tomographic bin assignment.
+        - If `sample == 'source'`, also requires:
+            - 'gamma1' : Shear component 1 column name.
+            - 'gamma2' : Shear component 2 column name.
+    selected_bins : list of int
+        List of tomographic bin indices to extract. Each must be in the range [0, nbins).
+    sample : str
+        Type of sample to extract. If 'source', includes shear components in the output.
+    nbins : int, optional
+        Total number of tomographic bins. Default is 6.
+
+    Returns
+    -------
+    tomo_bins : list of dict
+        List of dictionaries, one per selected tomographic bin, each containing:
+        - 'ra': Right ascension values for galaxies in the bin.
+        - 'dec': Declination values for galaxies in the bin.
+        - 'gamma1' and 'gamma2': Shear components (if `sample == 'source'`).
+    ngal_bin : list of int
+        List of galaxy counts for each selected tomographic bin.
+
+    Raises
+    ------
+    ValueError
+        If a bin index in `selected_bins` is not in the valid range [0, nbins).
+
+    Notes
+    -----
+    - This function assumes the FITS file contains a table compatible with Astropy's Table format.
+    - Output lists are ordered according to the order of `selected_bins`.
+    - Useful for preparing input data for tomographic cosmic shear or clustering analyses.
+    """
+
+    print('\nTomographic binning for {} sample'.format(sample))
+    dat = Table.read(file_path, format='fits')
+    df = dat.to_pandas()
+
+    # do the actual division in tomographic bins
+    tomo_bins = []
+    ngal_bin = []
+    for i in selected_bins:
+        if not (0 <= i < nbins):
+            raise ValueError(f"Invalid bin index: {i}. It should be in the range [0, {nbins}).")
+        print('- bin {}/{}'.format(i+1, nbins))
+        selection = (df[columns['tomo_bin_id']] == i)
+        ngal_bin.append(df[columns['ra']][selection].size)
+
+        tbin = {
+            'ra': df[columns['ra']][selection],
+            'dec': df[columns['dec']][selection]
+        }
+        if sample == 'source':
+            tbin['gamma1'] = df[columns['gamma1']][selection]
+            tbin['gamma2'] = df[columns['gamma2']][selection]
+
+        tomo_bins.append(tbin)
+
+    return tomo_bins, ngal_bin
 
 def build_nz(tbin, nb=400, nz=1000):
     """
@@ -1200,7 +1271,7 @@ def nofz_to_euclidSGS(
     hist: bool = False,
 ) -> None:
     """
-    This function is copied from https://github.com/euclidlib/euclidlib/blob/main/euclidlib/photo/_phz.py. Author: Nicolas Tessore 
+    This function is copied from https://github.com/euclidlib/euclidlib/blob/main/euclidlib/photo/_phz.py. Author: Nicolas Tessore
 
     Write n(z) data in Euclid SGS format.  Supports both distributions
     (when *hist* is false, the default) and histograms (when *hist* is
@@ -1294,7 +1365,7 @@ def cells_to_euclidSGS(dic, bnmt, zbins, probes, cross, outname):
 
     Parameters
     ----------
-        Same as save_twopoint.py 
+        Same as save_twopoint.py
     """
 
     # format ell binning (we assume same ell-binning for the moment)
@@ -1355,7 +1426,7 @@ def mixmat_to_euclidSGS(dic, bnmt, zbins, probes, cross, outname):
 
     Parameters
     ----------
-        Same as save_twopoint.py 
+        Same as save_twopoint.py
     """
 
     # format ell binning (we assume same ell-binning for the moment)
@@ -1408,12 +1479,12 @@ def mixmat_to_euclidSGS(dic, bnmt, zbins, probes, cross, outname):
 def save_euclidlib(cls_dic, w_dic, bnmt, nofz_dic, zbins, probes, cross, outname):
     """
     Save nofz's, angular spectra and mixmat to a FITS file in Euclid SGS format.
-    
+
     Parameters
     ----------
-        Same as save_twopoint.py 
+        Same as save_twopoint.py
     """
-    # 3/4 files will be created 
+    # 3/4 files will be created
     outname_nz_lens = outname + '_nzlens.fits'
     outname_nz_source = outname + '_nzsource.fits'
     outname_cells = outname + '_cells.fits'
