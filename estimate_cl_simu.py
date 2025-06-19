@@ -30,7 +30,7 @@ import os
 import time
 import configparser
 import itertools as it
-
+import shutil
 
 config = configparser.ConfigParser()
 configname = sys.argv[1]
@@ -65,6 +65,7 @@ if ell_binning['lmax'] > 3*nside:
 
 if os.path.isfile(in_out['output_dir']):
     raise FileExistsError(f"This output directory already exists !")
+
 
 #-- Managing filenames
 print("\nCreating the output directory")
@@ -262,10 +263,11 @@ elif in_out['output_format'] == 'euclidlib':
     al.save_euclidlib(cls_dic,
                       w_arr_dic,
                       bnmt,
+                      nofz_dic,
                       z_binning['selected_bins'],
                       probe_selection['probes'],
                       probe_selection['cross'],
-                      (outname+"_elib.fits"))
+                      (outname+"_elib"))
 
 else :
     raise ValueError(f"The format for the C(l) output file should be numpy or twopoint")

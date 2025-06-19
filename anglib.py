@@ -8,6 +8,7 @@ NaMaster (a Python wrapper for MASTER), and other scientific computing libraries
 """
 
 import os
+from os import PathLike
 import time
 import itertools as it
 
@@ -23,8 +24,15 @@ from statsmodels.stats.weightstats import DescrStatsW
 
 
 from general import mysplit
+import fitsio
+from typing import TYPE_CHECKING
+from typing import Any
+from numpy.typing import ArrayLike, NDArray
 
-
+if np.lib.NumpyVersion(np.__version__) >= "2.0.0b1":
+    trapezoid = np.trapezoid
+else:
+    trapezoid = np.trapz
 
 #---- Redshift binning ----#
 
@@ -135,9 +143,9 @@ def create_redshift_bins_simu(file_path, columns, selected_bins, sample,
     tomo_bins = []
     ngal_bin = []
     for i in selected_bins:
-        if not (0 <= i < nbins):
-            raise ValueError(f"Invalid bin index: {i}. It should be in the range [0, {nbins}).")
-        print('- bin {}/{}'.format(i+1, nbins))
+        if not (1 <= i <= nbins):
+            raise ValueError(f"Invalid bin index: {i}. It should be in the range [1, {nbins}).")
+        print('- bin {}/{}'.format(i, nbins))
         selection = (df[columns['zp']] >= z_edges[i]) & (df[columns['zp']] <= z_edges[i+1])
         ngal_bin.append(df[columns['ra']][selection].size)
 
@@ -207,9 +215,9 @@ def create_redshift_bins_data(file_path, columns, selected_bins, sample, nbins=6
     tomo_bins = []
     ngal_bin = []
     for i in selected_bins:
-        if not (0 <= i < nbins):
-            raise ValueError(f"Invalid bin index: {i}. It should be in the range [0, {nbins}).")
-        print('- bin {}/{}'.format(i+1, nbins))
+        if not (1 <= i <= nbins):
+            raise ValueError(f"Invalid bin index: {i}. It should be in the range [1, {nbins}).")
+        print('- bin {}/{}'.format(i, nbins))
         selection = (df[columns['tomo_bin_id']] == i)
         ngal_bin.append(df[columns['ra']][selection].size)
 
@@ -975,8 +983,8 @@ def get_iter(probe, cross, zbins):
     iterator : iterator
         Iterator yielding pairs of bin labels.
     """
-    keymap = {'GC': ['D{}'.format(i+1) for i in zbins],
-              'WL': ['G{}'.format(i+1) for i in zbins],
+    keymap = {'GC': ['D{}'.format(i) for i in zbins],
+              'WL': ['G{}'.format(i) for i in zbins],
               'GGL': []}
 
     cross_selec = {
@@ -1010,8 +1018,8 @@ def get_iter_nokeymap(probe, cross, zbins):
     iterator : iterator
         Iterator yielding pairs of bin labels.
     """
-    keymap = {'GC': ['{}'.format(i+1) for i in zbins],
-              'WL': ['{}'.format(i+1) for i in zbins],
+    keymap = {'GC': ['{}'.format(i) for i in zbins],
+              'WL': ['{}'.format(i) for i in zbins],
               'GGL': []}
 
     cross_selec = {
@@ -1497,3 +1505,35 @@ def save_euclidlib(cls_dic, w_dic, bnmt, nofz_dic, zbins, probes, cross, outname
     # FITSFILEs 3 and 4: cells and mixing matrix
     cells_to_euclidSGS(cls_dic, bnmt, zbins, probes, cross, outname_cells)
     mixmat_to_euclidSGS(w_dic,  bnmt, zbins, probes, cross, outname_mixmat)
+
+
+
+def read_map(path, nside, *, nest=False):
+    """
+    Read a HEALPix map in "partial" format from *path* and return it at
+    resolution *nside*.
+
+    The returned NSIDE cannot be larger than the NSIDE of the stored
+    map.
+
+    If *nest* is true, returns the map in NESTED ordering.
+    """
+    data, header = fitsio.read(path, header=True)
+    nside_in = header["NSIDE"]
+    fact = (nside_in // nside) ** 2
+    if fact == 0:
+        raise ValueError(
+            f"requested NSIDE={nside} greater than map NSIDE={nside_in}"
+        )
+    out = np.zeros(12 * nside**2)
+    ipix, wht = data["PIXEL"], data["WEIGHT"]
+    order = header["ORDERING"]
+    if order == "RING":
+        ipix = hp.ring2nest(nside, ipix)
+    elif order != "NESTED":
+        raise ValueError(f"unknown pixel ordering {order} in map")
+    ipix = ipix // fact
+    if not nest:
+        ipix = hp.nest2ring(nside, ipix)
+    np.add.at(out, ipix, wht / fact)
+    return out

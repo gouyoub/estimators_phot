@@ -24,12 +24,15 @@ from collections import OrderedDict
 import pymaster as nmt
 import anglib as al
 from general import load_it
+import astropy.io.fits as fits
 
 import sys
 import os
 import time
 import configparser
 import itertools as it
+import shutil
+
 
 
 config = configparser.ConfigParser()
@@ -66,6 +69,7 @@ if ell_binning['lmax'] > 3*nside:
 if os.path.isfile(in_out['output_dir']):
     raise FileExistsError(f"This output directory already exists !")
 
+
 #-- Managing filenames
 print("\nCreating the output directory")
 os.mkdir(in_out['output_dir'])
@@ -73,7 +77,7 @@ os.system(f"cp {configname} {in_out['output_dir']}") # copy inifile in the outpu
 ref_out_fname = f"{in_out['output_dir']}/{in_out['output_dir'].split('/')[-1]}"
 
 #-- Get the mask
-mask = hp.read_map(in_out['mask'])
+mask = al.read_map(in_out['mask'], 1024)
 fsky = np.mean(mask)
 if apodization['apodize']:
     print('\nApodizing the mask')
@@ -133,8 +137,8 @@ if not maps['load_maps']:
                 tomo_bins = tomo_bins_source
                 var_shape[i] = al.shape_var(tomo_bins[i])
 
-            maps_dic[f"{k}{izb+1}"] = map(tomo_bins[i], nside, mask)
-            noise_dic[f"{k}{izb+1}"] = al.compute_noise(k, tomo_bins[i], fsky)
+            maps_dic[f"{k}{izb}"] = map(tomo_bins[i], nside, mask)
+            noise_dic[f"{k}{izb}"] = al.compute_noise(k, tomo_bins[i], fsky)
     np.savetxt(f"{ref_out_fname}_shapevar.txt", var_shape)
 
 #-- Load maps, noise if asked
@@ -149,11 +153,18 @@ else :
 #-- Load n(z)
 # /!\ For now just put n(z) to zeros until I figure out the format /!\
 nofz_dic = {}
+zbinedges = np.linspace(0.0, 6.0, 3000) # redshift values are not given
 if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
-    nofz_dic['lens'] = np.zeros(3000)
+    ff_nofz_lens = fits.open(in_out['nofz_she_name'])
+    nofz_dic['lens'] = np.zeros((len(ff_nofz_lens[1].data['BIN_ID'])+1, len(zbinedges)))
+    nofz_dic['lens'][0] = zbinedges
+    nofz_dic['lens'][1:] = ff_nofz_lens[1].data['N_Z']
 
 if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
-    nofz_dic['source'] = np.zeros(3000)
+    ff_nofz_source = fits.open(in_out['nofz_pos_name'])
+    nofz_dic['source'] = np.zeros((len(ff_nofz_source[1].data['BIN_ID'])+1, len(zbinedges)))
+    nofz_dic['source'][0] = zbinedges
+    nofz_dic['source'][1:] = ff_nofz_source[1].data['N_Z']
 
 #-- Save maps and associated noise if asked
 if maps['save_maps']:
@@ -249,10 +260,11 @@ elif in_out['output_format'] == 'euclidlib':
     al.save_euclidlib(cls_dic,
                       w_arr_dic,
                       bnmt,
+                      nofz_dic,
                       z_binning['selected_bins'],
                       probe_selection['probes'],
                       probe_selection['cross'],
-                      (outname+"_elib.fits"))
+                      (outname+"_elib"))
 
 else :
     raise ValueError(f"The format for the C(l) output file should be numpy or twopoint")
