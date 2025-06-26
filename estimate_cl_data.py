@@ -155,13 +155,13 @@ else :
 nofz_dic = {}
 zbinedges = np.linspace(0.0, 6.0, 3000) # redshift values are not given
 if 'GC' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
-    ff_nofz_lens = fits.open(in_out['nofz_she_name'])
+    ff_nofz_lens = fits.open(in_out['nofz_pos_name'])
     nofz_dic['lens'] = np.zeros((len(ff_nofz_lens[1].data['BIN_ID'])+1, len(zbinedges)))
     nofz_dic['lens'][0] = zbinedges
     nofz_dic['lens'][1:] = ff_nofz_lens[1].data['N_Z']
 
 if 'WL' in probe_selection['probes'] or 'GGL' in probe_selection['probes']:
-    ff_nofz_source = fits.open(in_out['nofz_pos_name'])
+    ff_nofz_source = fits.open(in_out['nofz_she_name'])
     nofz_dic['source'] = np.zeros((len(ff_nofz_source[1].data['BIN_ID'])+1, len(zbinedges)))
     nofz_dic['source'][0] = zbinedges
     nofz_dic['source'][1:] = ff_nofz_source[1].data['N_Z']

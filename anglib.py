@@ -146,7 +146,7 @@ def create_redshift_bins_simu(file_path, columns, selected_bins, sample,
         if not (1 <= i <= nbins):
             raise ValueError(f"Invalid bin index: {i}. It should be in the range [1, {nbins}).")
         print('- bin {}/{}'.format(i, nbins))
-        selection = (df[columns['zp']] >= z_edges[i]) & (df[columns['zp']] <= z_edges[i+1])
+        selection = (df[columns['zp']] >= z_edges[i-1]) & (df[columns['zp']] <= z_edges[i])
         ngal_bin.append(df[columns['ra']][selection].size)
 
         tbin = {
@@ -688,13 +688,14 @@ def couple_noise(noise_array, wsp, bnmt, fsky, nside, depixelate):
 
     snl = noise_array / pixwin(nside, depixelate)[:i_lmax]
     # snl_coupled = wsp.couple_cell(snl)[0]
-    snl_coupled = wsp.decouple_cell(snl)[0]*fsky**2 # multiplying by fsky to compensate the decoupling
+    # snl_coupled = wsp.decouple_cell(snl)[0]*fsky**2 # multiplying by fsky to compensate the decoupling
                                                     # and another time to account for the coupling of the Cl's
+    snl = bnmt.bin_cell(snl)[0]*fsky
 
     # Bin the coupled noise
     # snl_coupled = bnmt.bin_cell(snl_coupled)[0]/fsky
 
-    return snl_coupled
+    return snl
 
 def debias(cl, noise, wsp, bnmt, fsky, nside, debias_bool, depixelate_bool, decouple_bool):
     """
@@ -1518,22 +1519,28 @@ def read_map(path, nside, *, nest=False):
 
     If *nest* is true, returns the map in NESTED ordering.
     """
-    data, header = fitsio.read(path, header=True)
-    nside_in = header["NSIDE"]
-    fact = (nside_in // nside) ** 2
-    if fact == 0:
-        raise ValueError(
-            f"requested NSIDE={nside} greater than map NSIDE={nside_in}"
-        )
-    out = np.zeros(12 * nside**2)
-    ipix, wht = data["PIXEL"], data["WEIGHT"]
-    order = header["ORDERING"]
-    if order == "RING":
-        ipix = hp.ring2nest(nside, ipix)
-    elif order != "NESTED":
-        raise ValueError(f"unknown pixel ordering {order} in map")
-    ipix = ipix // fact
-    if not nest:
-        ipix = hp.nest2ring(nside, ipix)
-    np.add.at(out, ipix, wht / fact)
+
+    try:
+        data, header = fitsio.read(path, header=True)
+        nside_in = header["NSIDE"]
+        fact = (nside_in // nside) ** 2
+        if fact == 0:
+            raise ValueError(
+                f"requested NSIDE={nside} greater than map NSIDE={nside_in}"
+            )
+        out = np.zeros(12 * nside**2)
+        ipix, wht = data["PIXEL"], data["WEIGHT"]
+        order = header["ORDERING"]
+        if order == "RING":
+            ipix = hp.ring2nest(nside, ipix)
+        elif order != "NESTED":
+            raise ValueError(f"unknown pixel ordering {order} in map")
+        ipix = ipix // fact
+        if not nest:
+            ipix = hp.nest2ring(nside, ipix)
+        np.add.at(out, ipix, wht / fact)
+
+    except:
+        out = hp.read_map(path)
+
     return out
