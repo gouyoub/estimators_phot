@@ -471,7 +471,7 @@ def compute_master(f_a, f_b, wsp, nside, depixelate):
     i_lmax = cl_coupled.shape[1]
     cl_coupled /= pixwin(nside, depixelate)[:i_lmax]
     cl_decoupled = wsp.decouple_cell(cl_coupled)
-    return cl_decoupled[0]
+    return cl_decoupled
 
 def compute_coupled(f_a, f_b, bnmt, nside, depixelate):
     """
@@ -498,8 +498,10 @@ def compute_coupled(f_a, f_b, bnmt, nside, depixelate):
     cl_coupled = nmt.compute_coupled_cell(f_a, f_b)
     i_lmax = cl_coupled.shape[1]
     cl_coupled /= pixwin(nside, depixelate)[:i_lmax]
-    cl_binned = bnmt.bin_cell(np.array([cl_coupled[0]]))
-    return cl_binned[0]
+    cl_binned = np.zeros_like(cl_coupled)
+    for i in range(cl_coupled.shape[0]):
+        cl_binned[i] = bnmt.bin_cell(np.array([cl_coupled[i]]))
+    return cl_binned
 
 def linear_binning(lmax, lmin, bw):
     """
@@ -743,7 +745,7 @@ def debias(cl, noise, wsp, bnmt, fsky, nside, debias_bool, depixelate_bool, deco
     if debias_bool:
 
         lmax = wsp.wsp.bin.ell_max
-        array_shape = wsp.get_bandpower_windows().shape[0]
+        array_shape = cl.shape[0]
 
         if array_shape == 1:
             noise_array = np.array([np.full(lmax+1, noise)])

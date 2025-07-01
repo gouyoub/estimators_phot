@@ -230,7 +230,16 @@ for probe in probe_selection['probes']:
             cl = al.debias(cl, noise_dic[pa], w_dic[probe], bnmt, fsky, nside,
                            noise['debias'], maps['depixelate'], spectra['decoupling'])
 
-        cls_dic[f"{pa}-{pb}"] = cl
+        if probe == 'GC':
+            cls_dic['{}-{}'.format(pa,pb)] = cl[0]
+        if probe == 'WL':
+            cls_dic['{}_E-{}_E'.format(pa,pb)] = cl[0]
+            cls_dic['{}_E-{}_B'.format(pa,pb)] = cl[1]
+            cls_dic['{}_B-{}_E'.format(pa,pb)] = cl[2]
+            cls_dic['{}_B-{}_B'.format(pa,pb)] = cl[3]
+        if probe == 'GGL':
+            cls_dic['{}-{}_E'.format(pa,pb)] = cl[0]
+            cls_dic['{}-{}_B'.format(pa,pb)] = cl[1]
 
 cls_dic['ell'] = bnmt.get_effective_ells()
 
