@@ -23,7 +23,7 @@ import twopoint
 from statsmodels.stats.weightstats import DescrStatsW
 
 
-from general import mysplit
+from general import mysplit2
 import fitsio
 from typing import TYPE_CHECKING
 from typing import Any
@@ -498,10 +498,10 @@ def compute_coupled(f_a, f_b, bnmt, nside, depixelate):
     cl_coupled = nmt.compute_coupled_cell(f_a, f_b)
     i_lmax = cl_coupled.shape[1]
     cl_coupled /= pixwin(nside, depixelate)[:i_lmax]
-    cl_binned = np.zeros_like(cl_coupled)
+    cl_binned = []
     for i in range(cl_coupled.shape[0]):
-        cl_binned[i] = bnmt.bin_cell(np.array([cl_coupled[i]]))
-    return cl_binned
+        cl_binned.append(bnmt.bin_cell(np.array([cl_coupled[i]]))[0])
+    return np.array(cl_binned)
 
 def linear_binning(lmax, lmin, bw):
     """
@@ -854,7 +854,7 @@ def save_twopoint(cls_dic, bnmt, nofz_dic, ngal_dic, zbins, probes, cross, outna
         z_high = z_mid + np.diff(z_mid)[0]
         z_low  = z_mid - np.diff(z_mid)[0]
         nz_source = twopoint.NumberDensity('nz_source', zlow=z_low, z=z_mid, zhigh=z_high,
-                                           nzs=nofz_dic['source'][1:], ngal=ngal_dic['source'])
+                                           nzs=nofz_dic['source'][zbins,:], ngal=ngal_dic['source'])
         kernels.append(nz_source)
 
     if 'GGL' in probes or 'GC' in probes:
@@ -862,13 +862,24 @@ def save_twopoint(cls_dic, bnmt, nofz_dic, ngal_dic, zbins, probes, cross, outna
         z_high = z_mid + np.diff(z_mid)[0]
         z_low  = z_mid - np.diff(z_mid)[0]
         nz_lens = twopoint.NumberDensity('nz_lens', zlow=z_low, z=z_mid, zhigh=z_high,
-                                         nzs=nofz_dic['lens'][1:], ngal=ngal_dic['lens'])
+                                         nzs=nofz_dic['lens'][zbins,:], ngal=ngal_dic['lens'])
         kernels.append(nz_lens)
 
-
     # format spectra
-    spectra = []
+    probes_b = []
     for p in probes :
+        if p == 'WL':
+            probes_b.append('WL_E')
+            probes_b.append('WL_EB')
+            probes_b.append('WL_B')
+        elif p == 'GGL':
+            probes_b.append('GGL_E')
+            probes_b.append('GGL_B')
+        else :
+            probes_b.append(p)
+
+    spectra = []
+    for p in probes_b:
         spectra.append(format_spectra_twopoint(cls_dic, bnmt, p, cross, zbins))
 
     # save twopoint fits file
@@ -917,10 +928,10 @@ def format_spectra_twopoint(cls_dic, bnmt, probe, cross, zbins):
     cell = []
 
     # fill lists of info and quantities
-    probe_iter = get_iter(probe, cross, zbins)
+    probe_iter = get_iter_B(probe, cross, zbins)
     for pi, pj in probe_iter:
-        _, i = mysplit(pi)
-        _, j = mysplit(pj)
+        i = mysplit2(pi)
+        j = mysplit2(pj)
         bin1.append(np.repeat(int(i), nell))
         bin2.append(np.repeat(int(j), nell))
         multipole.append(ell)
@@ -942,14 +953,28 @@ def format_spectra_twopoint(cls_dic, bnmt, probe, cross, zbins):
     # define types and nz_sample
     types = {'GC' : (twopoint.Types.galaxy_position_fourier,
                      twopoint.Types.galaxy_position_fourier),
-             'WL' : (twopoint.Types.galaxy_shear_emode_fourier,
+
+             'WL_E' : (twopoint.Types.galaxy_shear_emode_fourier,
                      twopoint.Types.galaxy_shear_emode_fourier),
-             'GGL' : (twopoint.Types.galaxy_position_fourier,
-                      twopoint.Types.galaxy_shear_emode_fourier)}
+
+             'WL_EB' : (twopoint.Types.galaxy_shear_emode_fourier,
+                     twopoint.Types.galaxy_shear_bmode_fourier),
+
+             'WL_B' : (twopoint.Types.galaxy_shear_bmode_fourier,
+                     twopoint.Types.galaxy_shear_bmode_fourier),
+
+             'GGL_E' : (twopoint.Types.galaxy_position_fourier,
+                      twopoint.Types.galaxy_shear_emode_fourier),
+
+             'GGL_B' : (twopoint.Types.galaxy_shear_emode_fourier,
+                     twopoint.Types.galaxy_shear_bmode_fourier)}
 
     nz_sample = {'GC' : ('nz_lens', 'nz_lens'),
-          'WL' : ('nz_source', 'nz_source'),
-          'GGL' : ('nz_lens', 'nz_source')}
+          'WL_E' : ('nz_source', 'nz_source'),
+          'WL_EB' : ('nz_source', 'nz_source'),
+          'WL_B' : ('nz_source', 'nz_source'),
+          'GGL_E' : ('nz_lens', 'nz_source'),
+          'GGL_B' : ('nz_lens', 'nz_source')}
 
     # construct the SpectrumMeasurement object for the given probe
     spectrum = twopoint.SpectrumMeasurement('cell'+probe,
@@ -999,6 +1024,47 @@ def get_iter(probe, cross, zbins):
         'GC': cross_selec['GC' in cross],
         'WL': cross_selec['WL' in cross],
         'GGL': it.product(keymap['GC'], keymap['WL'])
+    }
+
+    return iter_probe[probe]
+
+def get_iter_B(probe, cross, zbins):
+    """
+    Get iterator for bin pairs based on the probe type and cross-correlation flag.
+
+    Parameters
+    ----------
+    probe : str
+        Probe type ('GC', 'WL', or 'GGL').
+    cross : bool
+        Flag indicating whether to compute cross-correlations.
+    zbins : list
+        List of redshift bin indices.
+
+    Returns
+    -------
+    iterator : iterator
+        Iterator yielding pairs of bin labels.
+    """
+    keymap = {'GC': ['D{}'.format(i) for i in zbins],
+              'WL_E': ['G{}_E'.format(i) for i in zbins],
+              'WL_B': ['G{}_B'.format(i) for i in zbins],
+              'WL_EB': [],
+              'GGL_E': [],
+              'GGL_B': []}
+
+    cross_selec = {
+        True: it.combinations_with_replacement(keymap[probe], 2),
+        False: zip(keymap[probe], keymap[probe])
+    }
+
+    iter_probe = {
+        'GC': cross_selec['GC' in cross],
+        'WL_E': cross_selec['WL' in cross],
+        'WL_B': cross_selec['WL' in cross],
+        'WL_EB': ((keymap['WL_E'][i], keymap['WL_B'][j]) for i, j in it.product(range(len(keymap['WL_E'])), range(len(keymap['WL_B']))) if j >= i),
+        'GGL_E': it.product(keymap['GC'], keymap['WL_E']),
+        'GGL_B': it.product(keymap['GC'], keymap['WL_B'])
     }
 
     return iter_probe[probe]

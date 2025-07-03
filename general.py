@@ -6,6 +6,12 @@ def mysplit(s):
     tail = s[len(head):]
     return head, tail
 
+def mysplit2(s):
+    x=list(s)
+    for i in x:
+        if i.isnumeric():
+            return i
+
 def load_it(obj):
     """
     Recursively loads a nested structure by converting string representations
